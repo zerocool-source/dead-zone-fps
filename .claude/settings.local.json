@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npx vite:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(cp \"/Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/Desktop/Desktop Cleanup 2026-03-18/ChatGPT Image Mar 17, 2026, 07_47_33 PM.png\" \"/Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/FPS/public/weapons/idle.png\")",
+      "Bash(cp \"/Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/Desktop/Desktop Cleanup 2026-03-18/ChatGPT Image Mar 17, 2026, 07_47_36 PM.png\" \"/Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/FPS/public/weapons/shoot.png\")",
+      "Bash(find /Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/ -maxdepth 4 -name *collection*floor* -o -name *floor_t*)",
+      "Bash(find /Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/Downloads/ -name *.png -newer /Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/FPS/public/music.mp3)",
+      "Bash(sips --help)",
+      "Bash(pip3 install:*)",
+      "Bash(python3:*)",
+      "Bash(find /Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/Downloads/ -name *.png -newer /Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/FPS/public/music.mp3 -newer /Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/FPS/public/textures/stair_tile.png)",
+      "Bash(find /Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/Downloads/ -name *.png -newer /Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/FPS/public/textures/wall_damaged.png)",
+      "Bash(ls -la /Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/FPS/public/textures/zombie*)",
+      "Bash(ls -la /Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/FPS/public/textures/wall_*)",
+      "Bash(node -e \":*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git rm:*)"
+    ]
+  }
+}
