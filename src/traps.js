@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from "three";
 
 /**
  * Trap system — point-activated area denial.
@@ -6,18 +6,18 @@ import * as THREE from 'three';
 
 export const TRAP_DEFS = {
   electric_stairs: {
-    id: 'electric_stairs',
-    name: 'Electric Trap',
+    id: "electric_stairs",
+    name: "Electric Trap",
     cost: 1000,
     damage: 50,
-    duration: 5,    // seconds active
-    cooldown: 30,   // seconds before reuse
+    duration: 5, // seconds active
+    cooldown: 30, // seconds before reuse
     radius: 4,
     color: 0x4488ff,
   },
   fire_hallway: {
-    id: 'fire_hallway',
-    name: 'Fire Trap',
+    id: "fire_hallway",
+    name: "Fire Trap",
     cost: 1500,
     damage: 80,
     duration: 4,
@@ -77,13 +77,21 @@ class Trap {
   get statusText() {
     if (this.active) return `ACTIVE ${Math.ceil(this.activeTimer)}s`;
     if (!this.ready) return `COOLDOWN ${Math.ceil(this.cooldownTimer)}s`;
-    return 'READY';
+    return "READY";
   }
 }
 
 export class TrapManager {
   constructor(scene) {
     this.scene = scene;
+    this.traps = [];
+  }
+
+  clear() {
+    for (const trap of this.traps) {
+      if (trap._indicator) this.scene.remove(trap._indicator);
+      if (trap._light) this.scene.remove(trap._light);
+    }
     this.traps = [];
   }
 
@@ -95,19 +103,19 @@ export class TrapManager {
     // Visual indicator
     const indicator = new THREE.Mesh(
       new THREE.CylinderGeometry(def.radius, def.radius, 0.05, 16),
-      new THREE.MeshBasicMaterial({ color: def.color, transparent: true, opacity: 0.15 })
+      new THREE.MeshBasicMaterial({
+        color: def.color,
+        transparent: true,
+        opacity: 0.15,
+      }),
     );
     indicator.position.copy(position);
     indicator.position.y = 0.03;
     this.scene.add(indicator);
     trap._indicator = indicator;
 
-    // Glow light
-    const light = new THREE.PointLight(def.color, 0.3, def.radius + 2, 2);
-    light.position.copy(position);
-    light.position.y = 0.5;
-    this.scene.add(light);
-    trap._light = light;
+    // No PointLight — emissive indicator handles glow
+    trap._light = null;
 
     this.traps.push(trap);
     return trap;
@@ -128,10 +136,14 @@ export class TrapManager {
 
       // Update visual
       if (trap._light) {
-        trap._light.intensity = trap.active ? 2.0 : (trap.ready ? 0.3 : 0.1);
+        trap._light.intensity = trap.active ? 2.0 : trap.ready ? 0.3 : 0.1;
       }
       if (trap._indicator) {
-        trap._indicator.material.opacity = trap.active ? 0.4 : (trap.ready ? 0.15 : 0.05);
+        trap._indicator.material.opacity = trap.active
+          ? 0.4
+          : trap.ready
+            ? 0.15
+            : 0.05;
       }
     }
   }

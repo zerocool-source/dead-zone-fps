@@ -3,7 +3,7 @@
 // ============================================
 
 // --- Player ---
-export const PLAYER_HEIGHT = 1.7;
+export const PLAYER_HEIGHT = 1.85;
 export const PLAYER_RADIUS = 0.4;
 export const MOVE_SPEED = 6;
 export const SPRINT_MULTIPLIER = 1.6;
@@ -20,8 +20,8 @@ export const RELOAD_TIME = 1.8; // seconds
 export const WEAPON_DAMAGE = 25;
 export const RECOIL_AMOUNT = 0.04; // radians upward kick (increased)
 export const RECOIL_RECOVERY = 0.08; // radians per second (slower recovery = heavier feel)
-export const WEAPON_RANGE = 100;
-export const SPREAD_BASE = 0.01; // radians
+export const WEAPON_RANGE = 500; // covers entire map easily
+export const SPREAD_BASE = 0.005; // tight spread — accurate at any range
 export const HORIZONTAL_RECOIL = 0.015; // radians left/right kick
 
 // --- Zombie ---
@@ -50,7 +50,7 @@ export const WAVE_BASE_COUNT = 5;
 export const WAVE_COUNT_INCREASE = 3;
 export const WAVE_SPEED_INCREASE = 0.15;
 export const WAVE_HEALTH_INCREASE = 15;
-export const WAVE_DELAY = 4.0; // seconds between waves
+export const WAVE_DELAY = 10.0; // 10 seconds between waves — time to buy weapons
 
 // --- Room ---
 export const ROOM_WIDTH = 60;

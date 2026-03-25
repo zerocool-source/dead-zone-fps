@@ -43,18 +43,31 @@ export class GamepadController {
 
     // Standard Xbox button map
     this._BTN = {
-      A: 0, B: 1, X: 2, Y: 3,
-      LB: 4, RB: 5, LT: 6, RT: 7,
-      BACK: 8, START: 9,
-      L3: 10, R3: 11,
-      UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15,
+      A: 0,
+      B: 1,
+      X: 2,
+      Y: 3,
+      LB: 4,
+      RB: 5,
+      LT: 6,
+      RT: 7,
+      BACK: 8,
+      START: 9,
+      L3: 10,
+      R3: 11,
+      UP: 12,
+      DOWN: 13,
+      LEFT: 14,
+      RIGHT: 15,
     };
 
     this._createStatusUI();
 
     // Listen for browser gamepad events
     window.addEventListener("gamepadconnected", (e) => {
-      console.log(`[Gamepad] Event: connected — "${e.gamepad.id}" index=${e.gamepad.index}`);
+      console.log(
+        `[Gamepad] Event: connected — "${e.gamepad.id}" index=${e.gamepad.index}`,
+      );
       this._bindController(e.gamepad);
     });
 
@@ -129,7 +142,7 @@ export class GamepadController {
     if (this._lastLoggedId !== gp.id) {
       this._lastLoggedId = gp.id;
       console.log(
-        `[Gamepad] Bound: "${gp.id}" idx=${gp.index} mapping=${gp.mapping} axes=${gp.axes.length} btns=${gp.buttons.length}`
+        `[Gamepad] Bound: "${gp.id}" idx=${gp.index} mapping=${gp.mapping} axes=${gp.axes.length} btns=${gp.buttons.length}`,
       );
     }
 
@@ -155,7 +168,12 @@ export class GamepadController {
 
     if (id.includes("xbox") || id.includes("xinput") || id.includes("045e")) {
       name = "Xbox Controller";
-    } else if (id.includes("054c") || id.includes("playstation") || id.includes("dualsense") || id.includes("dualshock")) {
+    } else if (
+      id.includes("054c") ||
+      id.includes("playstation") ||
+      id.includes("dualsense") ||
+      id.includes("dualshock")
+    ) {
       name = "PlayStation Controller";
     } else if (id.includes("057e") || id.includes("pro controller")) {
       name = "Nintendo Controller";
@@ -247,7 +265,7 @@ export class GamepadController {
   _deadzone(val) {
     if (Math.abs(val) < GAMEPAD_DEADZONE) return 0;
     const sign = Math.sign(val);
-    return sign * (Math.abs(val) - GAMEPAD_DEADZONE) / (1 - GAMEPAD_DEADZONE);
+    return (sign * (Math.abs(val) - GAMEPAD_DEADZONE)) / (1 - GAMEPAD_DEADZONE);
   }
 
   _btn(gp, idx) {
@@ -269,7 +287,10 @@ export class GamepadController {
 
   _hasInput(gp) {
     for (let i = 0; i < gp.buttons.length; i++) {
-      if (gp.buttons[i] && (gp.buttons[i].pressed || gp.buttons[i].value > 0.15)) {
+      if (
+        gp.buttons[i] &&
+        (gp.buttons[i].pressed || gp.buttons[i].value > 0.15)
+      ) {
         return true;
       }
     }
@@ -315,8 +336,16 @@ export class GamepadController {
     const rawRX = this._deadzone(gp.axes[2] || 0);
     const rawRY = this._deadzone(gp.axes[3] || 0);
     const curve = 1.8;
-    this.lookX = Math.sign(rawRX) * Math.pow(Math.abs(rawRX), curve) * GAMEPAD_SENSITIVITY * dt;
-    this.lookY = Math.sign(rawRY) * Math.pow(Math.abs(rawRY), curve) * GAMEPAD_SENSITIVITY * dt;
+    this.lookX =
+      Math.sign(rawRX) *
+      Math.pow(Math.abs(rawRX), curve) *
+      GAMEPAD_SENSITIVITY *
+      dt;
+    this.lookY =
+      Math.sign(rawRY) *
+      Math.pow(Math.abs(rawRY), curve) *
+      GAMEPAD_SENSITIVITY *
+      dt;
 
     // Triggers — try buttons first, fallback to axes 4/5
     let rt = this._trigger(gp, this._BTN.RT);
@@ -333,14 +362,23 @@ export class GamepadController {
 
     // Buttons
     this.jump = this._btnEdge(gp, this._BTN.A);
-    this.reload = this._btnEdge(gp, this._BTN.X) || this._btnEdge(gp, this._BTN.LB);
+    this.reload = this._btnEdge(gp, this._BTN.X);
+    this.grenade = this._btnEdge(gp, this._BTN.LB); // LB = throw grenade
     this.sprint = this._btn(gp, this._BTN.L3);
     this.pause = this._btnEdge(gp, this._BTN.START);
-    this.interact = this._btnEdge(gp, this._BTN.B) || this._btnEdge(gp, this._BTN.Y);
+    this.interact =
+      this._btnEdge(gp, this._BTN.B) || this._btnEdge(gp, this._BTN.Y);
 
     // Update prev for non-edge buttons
     for (let i = 0; i < gp.buttons.length; i++) {
-      const isEdge = [this._BTN.A, this._BTN.X, this._BTN.LB, this._BTN.START, this._BTN.B, this._BTN.Y].includes(i);
+      const isEdge = [
+        this._BTN.A,
+        this._BTN.X,
+        this._BTN.LB,
+        this._BTN.START,
+        this._BTN.B,
+        this._BTN.Y,
+      ].includes(i);
       if (!isEdge) {
         this._prevButtons[i] = this._btn(gp, i);
       }

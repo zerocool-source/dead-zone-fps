@@ -189,11 +189,123 @@ export class Effects {
     }
   }
 
+  // ── Blood Decal System ──────────────────────────────────
+
+  /** Spawn a blood decal on the floor near the hit point */
+  spawnBloodDecal(scene, position) {
+    if (!this._decals) this._decals = [];
+    if (!this._decalGeo) {
+      this._decalGeo = new THREE.PlaneGeometry(1, 1);
+      // Create procedural blood splat texture
+      const c = document.createElement("canvas");
+      c.width = 128;
+      c.height = 128;
+      const ctx = c.getContext("2d");
+      ctx.clearRect(0, 0, 128, 128);
+      // Random blood splatters
+      for (let i = 0; i < 6; i++) {
+        const x = 64 + (Math.random() - 0.5) * 60;
+        const y = 64 + (Math.random() - 0.5) * 60;
+        const r = 8 + Math.random() * 25;
+        const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, "rgba(120,10,5,0.9)");
+        g.addColorStop(0.6, "rgba(80,5,2,0.5)");
+        g.addColorStop(1, "rgba(60,0,0,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // Drip lines
+      for (let i = 0; i < 4; i++) {
+        ctx.strokeStyle = `rgba(${100 + Math.random() * 40},5,2,0.6)`;
+        ctx.lineWidth = 1 + Math.random() * 2;
+        ctx.beginPath();
+        const sx = 40 + Math.random() * 48;
+        ctx.moveTo(sx, 64);
+        ctx.lineTo(
+          sx + (Math.random() - 0.5) * 20,
+          64 + 20 + Math.random() * 40,
+        );
+        ctx.stroke();
+      }
+      this._decalTex = new THREE.CanvasTexture(c);
+    }
+
+    const MAX_DECALS = 50;
+    // Remove oldest if over limit
+    while (this._decals.length >= MAX_DECALS) {
+      const old = this._decals.shift();
+      scene.remove(old);
+      old.material.dispose();
+    }
+
+    const mat = new THREE.MeshBasicMaterial({
+      map: this._decalTex,
+      transparent: true,
+      opacity: 0.7 + Math.random() * 0.3,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+
+    const decal = new THREE.Mesh(this._decalGeo, mat);
+    const size = 0.5 + Math.random() * 1.5;
+    decal.scale.set(size, size, 1);
+    decal.rotation.x = -Math.PI / 2; // flat on floor
+    decal.rotation.z = Math.random() * Math.PI * 2; // random rotation
+    decal.position.set(
+      position.x + (Math.random() - 0.5) * 1,
+      0.02, // just above floor
+      position.z + (Math.random() - 0.5) * 1,
+    );
+
+    scene.add(decal);
+    this._decals.push(decal);
+  }
+
+  /** Big death gore explosion — chunks + spray */
+  spawnDeathExplosion(scene, position) {
+    // Large blood burst
+    const count = 12;
+    for (let i = 0; i < count; i++) {
+      const particle = new THREE.Mesh(
+        this._sharedParticleGeo,
+        new THREE.MeshBasicMaterial({
+          color: i < 8 ? 0xaa0000 : 0x660000,
+          transparent: true,
+          opacity: 1,
+        }),
+      );
+      particle.position.copy(position);
+      particle.position.y += 1;
+      const s = 0.8 + Math.random() * 1.5;
+      particle.scale.set(s, s, s);
+
+      const vel = new THREE.Vector3(
+        (Math.random() - 0.5) * 8,
+        Math.random() * 6 + 2,
+        (Math.random() - 0.5) * 8,
+      );
+
+      scene.add(particle);
+      this.particles.push({
+        mesh: particle,
+        velocity: vel,
+        life: 0.8 + Math.random() * 0.6,
+        maxLife: 1.2,
+      });
+    }
+
+    // Floor blood decals around the death spot
+    for (let i = 0; i < 3; i++) {
+      this.spawnBloodDecal(scene, position);
+    }
+  }
+
   /** Cleanup all particles */
   clear(scene) {
     for (const p of this.particles) {
       scene.remove(p.mesh);
-      p.mesh.geometry.dispose();
       p.mesh.material.dispose();
     }
     this.particles = [];

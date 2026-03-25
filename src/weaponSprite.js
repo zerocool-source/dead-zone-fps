@@ -22,15 +22,16 @@ const SIGHT_Y = 0.149; // 14.9% from top edge
 // TRANSFORMS (in pixels, relative to screen center)
 // ═══════════════════════════════════════════════════════════
 const HIP = {
-  x: 0, // px right of center
-  y: 160, // px below center — barrel tip near crosshair at 65%
-  widthVW: 38,
+  x: 60, // slight right offset
+  y: 260, // lower — more of the gun goes off-screen bottom
+  widthVW: 48, // 20% bigger — even closer, right in your face
 };
 
+// ADS: crosshair is at 55% from top = 5% below center (in front of barrel)
 const ADS = {
-  x: 0, // sight on crosshair
-  y: 162, // same Y as hip — crosshair is at 65% not 50%, so ADS = 15% of viewport below center
-  widthVW: 38,
+  x: 0,
+  crosshairPct: 0.55,
+  widthVW: 48,
 };
 
 // Recoil
@@ -47,15 +48,29 @@ const BOB_X = 4,
   BOB_SPEED = 10,
   SPRINT_MULT = 1.6;
 const RELOAD_DIP = 70;
-const SHOOT_DURATION = 0.1;
+const SHOOT_DURATION = 0.15; // longer so muzzle flash is visible
 const ADS_SPEED = 14;
 
-// Weapon PNG paths
+import { makeAKIdle, makeAKShoot } from "./akSprites.js";
+
+// AK canvas sprites — generated once at load time
+let _akIdleDataUrl = null;
+let _akShootDataUrl = null;
+function getAKIdle() {
+  if (!_akIdleDataUrl) _akIdleDataUrl = makeAKIdle();
+  return _akIdleDataUrl;
+}
+function getAKShoot() {
+  if (!_akShootDataUrl) _akShootDataUrl = makeAKShoot();
+  return _akShootDataUrl;
+}
+
+// Weapon PNG paths — AK uses canvas-generated sprites
 const WEAPON_SPRITES = {
   pistol: { idle: "/weapons/idle.png", shoot: "/weapons/shoot.png" },
   smg: { idle: "/weapons/idle.png", shoot: "/weapons/shoot.png" },
-  ak47: { idle: "/weapons/ak/idle.png", shoot: "/weapons/ak/shoot.png" },
-  rifle: { idle: "/weapons/ak/idle.png", shoot: "/weapons/ak/shoot.png" },
+  ak47: { idle: null, shoot: null, canvas: true },
+  rifle: { idle: null, shoot: null, canvas: true },
   shotgun: { idle: "/weapons/idle.png", shoot: "/weapons/shoot.png" },
   lmg: { idle: "/weapons/idle.png", shoot: "/weapons/shoot.png" },
 };
@@ -149,6 +164,43 @@ export class WeaponSprite {
     this._tuneY = 0;
     this._debug = false;
 
+    // Muzzle flash overlay — loads PNG if available, else CSS gradient
+    this._flashEl = document.createElement("img");
+    this._flashEl.src = "/textures/muzzle_flash.png";
+    this._flashEl.onerror = () => {
+      // Fallback: replace with a div using CSS gradient
+      const div = document.createElement("div");
+      Object.assign(div.style, {
+        position: "absolute",
+        top: "-10%",
+        left: "20%",
+        width: "60%",
+        height: "40%",
+        background:
+          "radial-gradient(ellipse, rgba(255,220,100,0.95) 0%, rgba(255,140,30,0.5) 40%, transparent 70%)",
+        pointerEvents: "none",
+        opacity: "0",
+        zIndex: "46",
+        mixBlendMode: "screen",
+      });
+      this.container.replaceChild(div, this._flashEl);
+      this._flashEl = div;
+    };
+    Object.assign(this._flashEl.style, {
+      position: "absolute",
+      top: "-15%",
+      left: "15%",
+      width: "70%",
+      height: "45%",
+      objectFit: "contain",
+      pointerEvents: "none",
+      opacity: "0",
+      zIndex: "46",
+      mixBlendMode: "screen",
+      filter: "brightness(1.5)",
+    });
+    this.container.appendChild(this._flashEl);
+
     // Fallbacks
     this._idleSrc = makeFallbackIdle();
     this._shootSrc = makeFallbackShoot();
@@ -173,8 +225,8 @@ export class WeaponSprite {
       width: `${HIP.widthVW}vw`,
       pointerEvents: "none",
       zIndex: "45",
-      // No translateX(-50%) here — we handle centering manually via the image offset
       transform: "translate(0, 0)",
+      overflow: "visible",
     });
 
     Object.assign(this.imgElement.style, {
@@ -217,9 +269,9 @@ export class WeaponSprite {
           const s =
             Math.max(d[i], d[i + 1], d[i + 2]) -
             Math.min(d[i], d[i + 1], d[i + 2]);
-          if (b > 230 && s < 30) d[i + 3] = 0;
-          else if (b > 200 && s < 40)
-            d[i + 3] = Math.floor((1 - (b - 200) / 55) * 255);
+          if (b > 210 && s < 35) d[i + 3] = 0;
+          else if (b > 180 && s < 45)
+            d[i + 3] = Math.floor((1 - (b - 180) / 50) * 255);
         }
         ctx.putImageData(id, 0, 0);
         onOk(canvas.toDataURL("image/png"));
@@ -271,13 +323,21 @@ export class WeaponSprite {
   switchWeapon(key) {
     const sp = WEAPON_SPRITES[key];
     if (!sp) return;
-    this._loadPNG(sp.idle, (u) => {
-      this._idleSrc = u;
-      if (!this._isShootFrame) this.imgElement.src = u;
-    });
-    this._loadPNG(sp.shoot, (u) => {
-      this._shootSrc = u;
-    });
+
+    if (sp.canvas) {
+      // AK-47 / rifle: use canvas-generated sprites
+      this._idleSrc = getAKIdle();
+      this._shootSrc = getAKShoot();
+      if (!this._isShootFrame) this.imgElement.src = this._idleSrc;
+    } else {
+      this._loadPNG(sp.idle, (u) => {
+        this._idleSrc = u;
+        if (!this._isShootFrame) this.imgElement.src = u;
+      });
+      this._loadPNG(sp.shoot, (u) => {
+        this._shootSrc = u;
+      });
+    }
   }
 
   show() {
@@ -293,8 +353,14 @@ export class WeaponSprite {
     this._shootTimer = SHOOT_DURATION;
     this._isShootFrame = true;
     this.imgElement.src = this._shootSrc;
-    this._recoilY = -RECOIL_KICK_UP; // negative = up
+    this._recoilY = -RECOIL_KICK_UP;
     this._recoilX = (Math.random() - 0.5) * RECOIL_KICK_SIDE * 2;
+
+    // Show muzzle flash overlay
+    this._flashEl.style.opacity = "1";
+    // Brief screen flash for impact feel
+    this.imgElement.style.filter =
+      "drop-shadow(0 0 8px rgba(255,180,50,0.8)) drop-shadow(0 0 20px rgba(255,100,0,0.4))";
   }
 
   // ── Frame update ────────────────────────────────────────
@@ -309,6 +375,9 @@ export class WeaponSprite {
       if (this._shootTimer <= 0) {
         this._isShootFrame = false;
         this.imgElement.src = this._idleSrc;
+        // Hide muzzle flash
+        this._flashEl.style.opacity = "0";
+        this.imgElement.style.filter = "drop-shadow(0 0 4px rgba(0,0,0,0.5))";
       }
     }
 
@@ -335,32 +404,40 @@ export class WeaponSprite {
 
     // ── Compute image dimensions ──
     const vw = window.innerWidth;
+    const vh = window.innerHeight;
     const imgW = (HIP.widthVW / 100) * vw;
     const imgH = imgW / this._imgAspect;
 
-    // ── The key trick: offset image so sight pixel = container origin ──
-    // Image left offset = -SIGHT_X * imgW (shift left so sight X aligns with container X)
-    // Image top offset  = -SIGHT_Y * imgH (shift up so sight Y aligns with container Y)
+    // ── Image offset: anchor sight pixel to container origin ──
     const imgOffX = -SIGHT_X * imgW;
     const imgOffY = -SIGHT_Y * imgH;
 
-    // ── Container position = lerp(hip, ads) ──
-    // ADS: container at screen center (0,0 offset from top:50% left:50%) → sight = crosshair
-    // Hip: container shifted down + optionally right
-    const containerX = HIP.x * (1 - this._ads) + ADS.x * this._ads;
-    const containerY = HIP.y * (1 - this._ads) + ADS.y * this._ads;
+    // ── ADS Y: crosshair is at 72% from top ──
+    // Container CSS is top:50%, left:50%
+    // Crosshair offset from 50% = (72% - 50%) = 22% of viewport
+    const adsY = (ADS.crosshairPct - 0.5) * vh;
 
-    // ── Add sway, recoil, debug tune ──
+    // ── Container position = lerp(hip, ads) ──
+    const containerX = HIP.x + (ADS.x - HIP.x) * this._ads;
+    const containerY = HIP.y + (adsY - HIP.y) * this._ads;
+
+    // ── Add sway, recoil, tune ──
     const totalX =
       containerX + swayX * swayFade + this._recoilX + this._tuneX * this._ads;
     const totalY =
       containerY + swayY * swayFade + this._recoilY + this._tuneY * this._ads;
 
     // ── Apply ──
-    // Container transform: moves the container from its CSS position (screen center)
     this.container.style.transform = `translate(${totalX}px, ${totalY}px)`;
-
-    // Image offset: positions image so sight pixel is at container origin
     this.imgElement.style.transform = `translate(${imgOffX}px, ${imgOffY}px)`;
+
+    // ── Crosshair stays at DEAD CENTER of screen ──
+    // The raycast fires from camera center (screen center),
+    // so the crosshair MUST stay at 50%/50% to match where bullets go.
+    const ch = document.getElementById("crosshair");
+    if (ch) {
+      ch.style.left = "50%";
+      ch.style.top = "50%";
+    }
   }
 }

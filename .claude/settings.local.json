@@ -18,7 +18,20 @@
       "Bash(node -e \":*)",
       "Bash(git init:*)",
       "Bash(git add:*)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(gh auth:*)",
+      "Bash(ls -la /Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/FPS/public/*.mp4)",
+      "Bash(lsof -ti:3000)",
+      "Bash(xargs kill:*)",
+      "Bash(ls -la /Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/FPS/public/textures/*.png)",
+      "Bash(cp \"/Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/Desktop/fps_saiga_animations.glb\" \"/Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/FPS/public/models/fps_saiga.glb\")",
+      "Bash(cp \"/Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/Desktop/fps_animations_fn_502_tactical.glb\" \"/Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/FPS/public/models/fps_fn502.glb\")",
+      "Bash(cp \"/Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/Downloads/zombie_walk_test.glb\" \"/Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/FPS/public/models/zombie.glb\")",
+      "Bash(cp \"/Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/Downloads/zombie_walk_test \\(1\\).glb\" \"/Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/FPS/public/models/zombie_alt.glb\")",
+      "Bash(ls -lh /Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/Desktop/seoul_city__gameready__render__blender__pbr*.glb)",
+      "Bash(find /Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/FPS/public -type f -size +10M -exec ls -lh {})",
+      "Bash(2)",
+      "Bash(git lfs:*)"
     ]
   }
 }

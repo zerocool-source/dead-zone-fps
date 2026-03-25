@@ -32,9 +32,15 @@ export class Player {
     this.yawObject.add(this.pitchObject);
 
     this.velocity = new THREE.Vector3();
+    this._moveDir = new THREE.Vector3();
+    this._upAxis = new THREE.Vector3(0, 1, 0);
+    this._newPos = new THREE.Vector3();
+    this._forwardDir = new THREE.Vector3();
+    this.sensitivityMult = 1.0; // adjustable from pause menu
     this.onGround = false;
     this.health = PLAYER_MAX_HEALTH;
     this.alive = true;
+    this.groundLevel = 0; // dynamic ground Y — set by level loader
     this.invulnTime = 0;
 
     // Input state
@@ -66,9 +72,8 @@ export class Player {
   }
 
   get forward() {
-    const dir = new THREE.Vector3();
-    this.camera.getWorldDirection(dir);
-    return dir;
+    this.camera.getWorldDirection(this._forwardDir);
+    return this._forwardDir;
   }
 
   _setupInput() {
@@ -103,8 +108,11 @@ export class Player {
 
     document.addEventListener("mousemove", (e) => {
       if (!this.alive) return;
-      this.yawObject.rotation.y -= e.movementX * MOUSE_SENSITIVITY;
-      this.pitchObject.rotation.x -= e.movementY * MOUSE_SENSITIVITY;
+      // Only process mouse look when pointer is locked (game is active, not paused)
+      if (!document.pointerLockElement) return;
+      const sens = MOUSE_SENSITIVITY * this.sensitivityMult;
+      this.yawObject.rotation.y -= e.movementX * sens;
+      this.pitchObject.rotation.x -= e.movementY * sens;
       this.pitchObject.rotation.x = Math.max(
         -Math.PI / 2,
         Math.min(Math.PI / 2, this.pitchObject.rotation.x),
@@ -145,21 +153,19 @@ export class Player {
       );
     }
 
-    // Movement direction (keyboard + gamepad merged)
-    const moveDir = new THREE.Vector3();
-    if (this.keys.w) moveDir.z -= 1;
-    if (this.keys.s) moveDir.z += 1;
-    if (this.keys.a) moveDir.x -= 1;
-    if (this.keys.d) moveDir.x += 1;
-    moveDir.x += this.gamepadMove.x;
-    moveDir.z += this.gamepadMove.z;
-    if (moveDir.length() > 1) moveDir.normalize();
+    // Movement direction (keyboard + gamepad merged) — reuse cached vectors
+    this._moveDir.set(0, 0, 0);
+    if (this.keys.w) this._moveDir.z -= 1;
+    if (this.keys.s) this._moveDir.z += 1;
+    if (this.keys.a) this._moveDir.x -= 1;
+    if (this.keys.d) this._moveDir.x += 1;
+    this._moveDir.x += this.gamepadMove.x;
+    this._moveDir.z += this.gamepadMove.z;
+    if (this._moveDir.length() > 1) this._moveDir.normalize();
 
     // Rotate direction by yaw
-    moveDir.applyAxisAngle(
-      new THREE.Vector3(0, 1, 0),
-      this.yawObject.rotation.y,
-    );
+    this._moveDir.applyAxisAngle(this._upAxis, this.yawObject.rotation.y);
+    const moveDir = this._moveDir;
 
     const isSprinting = this.keys.shift;
     const speed = MOVE_SPEED * (isSprinting ? SPRINT_MULTIPLIER : 1);
@@ -178,15 +184,17 @@ export class Player {
       this.onGround = false;
     }
 
-    // Tentative new position
-    const newPos = this.yawObject.position.clone();
+    // Tentative new position — reuse cached vector
+    const newPos = this._newPos;
+    newPos.copy(this.yawObject.position);
     newPos.x += this.velocity.x * dt;
     newPos.y += this.velocity.y * dt;
     newPos.z += this.velocity.z * dt;
 
-    // Ground collision
-    if (newPos.y <= PLAYER_HEIGHT) {
-      newPos.y = PLAYER_HEIGHT;
+    // Ground collision — uses dynamic ground level set by the level loader
+    const floorY = this.groundLevel + PLAYER_HEIGHT;
+    if (newPos.y <= floorY) {
+      newPos.y = floorY;
       this.velocity.y = 0;
       this.onGround = true;
     }

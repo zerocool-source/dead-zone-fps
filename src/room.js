@@ -98,17 +98,32 @@ export function createRoom(scene) {
     ROOM_HEIGHT / 2,
     HD,
   );
-  // Left wall (-X) — exposed brick
+  // Left wall (-X) — exposed brick, split for corridor opening (gap z=-2 to z=2)
+  const leftGapHalf = 2; // half of 4-unit gap
+  // Left wall top segment (z = -HD to -leftGapHalf)
+  const leftTopLen = HD - leftGapHalf;
   addBox(
     scene,
     obstacles,
     mats.wallBrick,
     WT,
     ROOM_HEIGHT,
-    ROOM_DEPTH,
+    leftTopLen,
     -HW,
     ROOM_HEIGHT / 2,
-    0,
+    -(leftGapHalf + leftTopLen / 2),
+  );
+  // Left wall bottom segment (z = leftGapHalf to HD)
+  addBox(
+    scene,
+    obstacles,
+    mats.wallBrick,
+    WT,
+    ROOM_HEIGHT,
+    leftTopLen,
+    -HW,
+    ROOM_HEIGHT / 2,
+    leftGapHalf + leftTopLen / 2,
   );
   // Right wall (+X) — damaged plaster
   addBox(
@@ -455,13 +470,15 @@ export function createRoom(scene) {
     stairTopZ_L + 1,
   );
 
-  // Stair approach lights (bottom and top)
-  const stairLightL = new THREE.PointLight(0xffaa44, 2.0, 12, 2);
-  stairLightL.position.set(leftStairX, 2, stairStartZ);
+  // Single stair light (was 2 — cut for perf)
+  const stairLightL = new THREE.PointLight(0xffaa44, 2.0, 15, 2);
+  stairLightL.position.set(
+    leftStairX,
+    SFH / 2 + 1,
+    (stairStartZ + stairTopZ_L) / 2,
+  );
+  stairLightL.castShadow = false;
   scene.add(stairLightL);
-  const stairLightL2 = new THREE.PointLight(0xffaa44, 1.5, 8, 2);
-  stairLightL2.position.set(leftStairX, SFH + 2, stairTopZ_L);
-  scene.add(stairLightL2);
 
   // ===========================
   // RIGHT STAIRCASE — along right wall, goes toward +Z (front)
@@ -494,13 +511,15 @@ export function createRoom(scene) {
     stairTopZ_R + 1,
   );
 
-  // Stair approach lights
-  const stairLightR = new THREE.PointLight(0xffaa44, 2.0, 12, 2);
-  stairLightR.position.set(rightStairX, 2, stairStartZ);
+  // Single stair light (was 2 — cut for perf)
+  const stairLightR = new THREE.PointLight(0xffaa44, 2.0, 15, 2);
+  stairLightR.position.set(
+    rightStairX,
+    SFH / 2 + 1,
+    (stairStartZ + stairTopZ_R) / 2,
+  );
+  stairLightR.castShadow = false;
   scene.add(stairLightR);
-  const stairLightR2 = new THREE.PointLight(0xffaa44, 1.5, 8, 2);
-  stairLightR2.position.set(rightStairX, SFH + 2, stairTopZ_R);
-  scene.add(stairLightR2);
 
   // ===========================
   // ZOMBIE SPAWN POINTS
@@ -626,22 +645,12 @@ export function createRoom(scene) {
   // ===========================
   // DEBRIS
   // ===========================
-  scatterDebris(scene, mats, 40, 0, ROOM_WIDTH - 6, ROOM_DEPTH - 6);
-  scatterDebris(
-    scene,
-    mats,
-    15,
-    SFH + FT / 2,
-    8,
-    ROOM_DEPTH - 10,
-    -HW + 4,
-    -HD + 2,
-  );
+  scatterDebris(scene, mats, 12, 0, ROOM_WIDTH - 6, ROOM_DEPTH - 6);
 
   // ===========================
   // HANGING CABLES & ROPES
   // ===========================
-  for (let i = 0; i < 15; i++) {
+  for (let i = 0; i < 5; i++) {
     const cx = (Math.random() - 0.5) * (ROOM_WIDTH - 12);
     const cz = (Math.random() - 0.5) * (ROOM_DEPTH - 12);
     const hangLen = 0.4 + Math.random() * 2.5;
@@ -664,10 +673,272 @@ export function createRoom(scene) {
   setupLighting(scene, flickerLights);
 
   // ===========================
+  // OUTSIDE CORRIDOR (left of main hall, behind door_corridor)
+  // Extends from x=-HW to x=-HW-12, z from -8 to 8
+  // ===========================
+  const COR_LEN = 12; // corridor length
+  const COR_W = 8; // corridor half-width (z = -8 to 8)
+  const COR_X = -HW; // starts at left wall
+
+  // Corridor floor
+  addMesh(
+    scene,
+    new THREE.PlaneGeometry(COR_LEN, COR_W * 2),
+    mats.hallwayFloor || mats.floor,
+    {
+      x: COR_X - COR_LEN / 2,
+      rx: -Math.PI / 2,
+      z: 0,
+      shadow: "receive",
+    },
+  );
+
+  // Corridor ceiling
+  addMesh(scene, new THREE.PlaneGeometry(COR_LEN, COR_W * 2), mats.ceiling, {
+    x: COR_X - COR_LEN / 2,
+    y: ROOM_HEIGHT,
+    rx: Math.PI / 2,
+    z: 0,
+  });
+
+  // Corridor north wall (z = -COR_W)
+  addBox(
+    scene,
+    obstacles,
+    mats.wallBrick || mats.concrete,
+    COR_LEN,
+    ROOM_HEIGHT,
+    0.5,
+    COR_X - COR_LEN / 2,
+    ROOM_HEIGHT / 2,
+    -COR_W,
+  );
+
+  // Corridor south wall (z = COR_W)
+  addBox(
+    scene,
+    obstacles,
+    mats.wallBrick || mats.concrete,
+    COR_LEN,
+    ROOM_HEIGHT,
+    0.5,
+    COR_X - COR_LEN / 2,
+    ROOM_HEIGHT / 2,
+    COR_W,
+  );
+
+  // Corridor end wall (x = -HW - COR_LEN) — partial, has opening to armory
+  addBox(
+    scene,
+    obstacles,
+    mats.wallDark || mats.concrete,
+    0.5,
+    ROOM_HEIGHT,
+    COR_W * 2,
+    COR_X - COR_LEN,
+    ROOM_HEIGHT / 2,
+    0,
+  );
+
+  // Corridor light
+  const corLight = new THREE.PointLight(0xff6633, 1.5, 20);
+  corLight.position.set(COR_X - COR_LEN / 2, ROOM_HEIGHT - 1, 0);
+  scene.add(corLight);
+  flickerLights.push({
+    light: corLight,
+    baseIntensity: 1.5,
+    phase: Math.random() * 100,
+  });
+
+  // Corridor zombie spawn point
+  spawnPoints.downstairs.push(
+    new THREE.Vector3(COR_X - COR_LEN + 2, 0, 4),
+    new THREE.Vector3(COR_X - COR_LEN + 2, 0, -4),
+  );
+
+  // Corridor cover — crates and barrels
+  addBox(
+    scene,
+    obstacles,
+    mats.wood || mats.concrete,
+    1.5,
+    1.2,
+    1.5,
+    COR_X - 4,
+    0.6,
+    3,
+  );
+  addBox(
+    scene,
+    obstacles,
+    mats.metal || mats.concrete,
+    1,
+    1.5,
+    1,
+    COR_X - 8,
+    0.75,
+    -3,
+  );
+
+  // ===========================
+  // SECRET ARMORY ROOM (beyond corridor, behind door_armory)
+  // Extends from x=-HW-12 to x=-HW-24, z from -10 to 10
+  // ===========================
+  const ARM_LEN = 12;
+  const ARM_W = 10;
+  const ARM_X = COR_X - COR_LEN;
+
+  // Armory floor
+  addMesh(
+    scene,
+    new THREE.PlaneGeometry(ARM_LEN, ARM_W * 2),
+    mats.hallwayFloor || mats.floor,
+    {
+      x: ARM_X - ARM_LEN / 2,
+      rx: -Math.PI / 2,
+      z: 0,
+      shadow: "receive",
+    },
+  );
+
+  // Armory ceiling
+  addMesh(scene, new THREE.PlaneGeometry(ARM_LEN, ARM_W * 2), mats.ceiling, {
+    x: ARM_X - ARM_LEN / 2,
+    y: ROOM_HEIGHT,
+    rx: Math.PI / 2,
+    z: 0,
+  });
+
+  // Armory walls — 3 sides (east side connects to corridor)
+  // West wall (back of armory)
+  addBox(
+    scene,
+    obstacles,
+    mats.wallDamaged || mats.concrete,
+    0.5,
+    ROOM_HEIGHT,
+    ARM_W * 2,
+    ARM_X - ARM_LEN,
+    ROOM_HEIGHT / 2,
+    0,
+  );
+
+  // North wall
+  addBox(
+    scene,
+    obstacles,
+    mats.wallBrick || mats.concrete,
+    ARM_LEN,
+    ROOM_HEIGHT,
+    0.5,
+    ARM_X - ARM_LEN / 2,
+    ROOM_HEIGHT / 2,
+    -ARM_W,
+  );
+
+  // South wall
+  addBox(
+    scene,
+    obstacles,
+    mats.wallBrick || mats.concrete,
+    ARM_LEN,
+    ROOM_HEIGHT,
+    0.5,
+    ARM_X - ARM_LEN / 2,
+    ROOM_HEIGHT / 2,
+    ARM_W,
+  );
+
+  // East wall segments (flanking the door opening, z=-4 to -10 and z=4 to 10)
+  addBox(
+    scene,
+    obstacles,
+    mats.wallDark || mats.concrete,
+    0.5,
+    ROOM_HEIGHT,
+    ARM_W - COR_W,
+    ARM_X,
+    ROOM_HEIGHT / 2,
+    -(COR_W + (ARM_W - COR_W) / 2),
+  );
+  addBox(
+    scene,
+    obstacles,
+    mats.wallDark || mats.concrete,
+    0.5,
+    ROOM_HEIGHT,
+    ARM_W - COR_W,
+    ARM_X,
+    ROOM_HEIGHT / 2,
+    COR_W + (ARM_W - COR_W) / 2,
+  );
+
+  // Armory lighting — red emergency lights
+  const armLight1 = new THREE.PointLight(0xff2200, 2, 18);
+  armLight1.position.set(ARM_X - 4, ROOM_HEIGHT - 1, -4);
+  scene.add(armLight1);
+  flickerLights.push({
+    light: armLight1,
+    baseIntensity: 2,
+    phase: Math.random() * 100,
+  });
+
+  const armLight2 = new THREE.PointLight(0xff4400, 1.5, 18);
+  armLight2.position.set(ARM_X - 8, ROOM_HEIGHT - 1, 4);
+  scene.add(armLight2);
+  flickerLights.push({
+    light: armLight2,
+    baseIntensity: 1.5,
+    phase: Math.random() * 100,
+  });
+
+  // Armory props — weapon racks, ammo crates
+  addBox(
+    scene,
+    obstacles,
+    mats.metal || mats.concrete,
+    3,
+    2,
+    0.5,
+    ARM_X - ARM_LEN + 1.5,
+    1,
+    -ARM_W + 1,
+  ); // weapon rack north wall
+  addBox(
+    scene,
+    obstacles,
+    mats.metal || mats.concrete,
+    3,
+    2,
+    0.5,
+    ARM_X - ARM_LEN + 1.5,
+    1,
+    ARM_W - 1,
+  ); // weapon rack south wall
+  addBox(
+    scene,
+    obstacles,
+    mats.wood || mats.concrete,
+    2,
+    1,
+    2,
+    ARM_X - 6,
+    0.5,
+    0,
+  ); // central ammo pile
+
+  // Armory spawn points (zombies break in through back wall)
+  spawnPoints.downstairs.push(
+    new THREE.Vector3(ARM_X - ARM_LEN + 2, 0, 0),
+    new THREE.Vector3(ARM_X - ARM_LEN + 2, 0, 6),
+    new THREE.Vector3(ARM_X - ARM_LEN + 2, 0, -6),
+  );
+
+  // ===========================
   // FOG & SKY
   // ===========================
-  scene.fog = new THREE.FogExp2(0x020204, 0.006);
-  scene.background = new THREE.Color(0x020204);
+  scene.fog = new THREE.FogExp2(0x0a0a12, 0.003);
+  scene.background = new THREE.Color(0x0a0a12);
 
   return { obstacles, flickerLights, stairWaypoints, spawnPoints };
 }
@@ -676,111 +947,43 @@ export function createRoom(scene) {
 // MATERIALS
 // ============================================================
 function buildMaterials() {
+  // MeshBasicMaterial with brightened PNG textures.
+  // Textures are loaded and brightness-boosted in textures.js.
+  function mat(map) {
+    return new THREE.MeshBasicMaterial({ map });
+  }
+  function solid(color) {
+    return new THREE.MeshBasicMaterial({ color });
+  }
+
   return {
-    // Real PNG textures for floors (tiled, not stretched)
-    floor: new THREE.MeshStandardMaterial({
-      map: createMansionFloorTexture(),
-      roughness: 0.85,
-      metalness: 0.05,
-    }),
-    hallwayFloor: new THREE.MeshStandardMaterial({
-      map: createHallwayFloorTexture(),
-      roughness: 0.8,
-      metalness: 0.05,
-    }),
-    balconyFloor: new THREE.MeshStandardMaterial({
-      map: createBalconyFloorTexture(),
-      roughness: 0.75,
-      metalness: 0.05,
-    }),
-    step: new THREE.MeshStandardMaterial({
-      map: createStairTexture(),
-      roughness: 0.7,
-      metalness: 0.1,
-    }),
-    dirtFloor: new THREE.MeshStandardMaterial({
-      map: createDirtTexture(),
-      roughness: 0.9,
-    }),
-    // Real PNG wall textures (tiled per zone)
-    wallConcrete: new THREE.MeshStandardMaterial({
-      map: createWallConcreteTexture(),
-      roughness: 0.85,
-    }),
-    wallBrick: new THREE.MeshStandardMaterial({
-      map: createWallBrickTexture(),
-      roughness: 0.8,
-    }),
-    wallDark: new THREE.MeshStandardMaterial({
-      map: createWallDarkTexture(),
-      roughness: 0.85,
-    }),
-    wallDamaged: new THREE.MeshStandardMaterial({
-      map: createWallDamagedTexture(),
-      roughness: 0.9,
-    }),
-    // Procedural textures for details
-    ceiling: new THREE.MeshStandardMaterial({
-      map: createCeilingTexture(),
-      roughness: 0.95,
-    }),
-    wallpaper: new THREE.MeshStandardMaterial({
-      map: createWallpaperTexture(),
-      roughness: 0.85,
-    }),
-    concrete: new THREE.MeshStandardMaterial({
-      map: createConcreteTexture(),
-      roughness: 0.85,
-      metalness: 0.1,
-    }),
-    wood: new THREE.MeshStandardMaterial({
-      map: createWoodTexture(),
-      roughness: 0.75,
-    }),
-    darkWood: new THREE.MeshStandardMaterial({
-      color: 0x2a1a0e,
-      roughness: 0.7,
-    }),
-    metal: new THREE.MeshStandardMaterial({
-      map: createMetalTexture(),
-      roughness: 0.4,
-      metalness: 0.7,
-    }),
-    metalDark: new THREE.MeshStandardMaterial({
-      color: 0x2a2a2e,
-      roughness: 0.4,
-      metalness: 0.7,
-    }),
-    crate: new THREE.MeshStandardMaterial({
-      map: createWoodTexture(),
-      roughness: 0.7,
-    }),
-    rail: new THREE.MeshStandardMaterial({
-      color: 0x555555,
-      roughness: 0.5,
-      metalness: 0.6,
-    }),
-    undersideMat: new THREE.MeshStandardMaterial({
-      color: 0x222222,
-      roughness: 0.9,
-    }),
-    dark: new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 }),
-    chair: new THREE.MeshStandardMaterial({ color: 0x3a2a1a, roughness: 0.8 }),
-    barrel: new THREE.MeshStandardMaterial({
-      color: 0x334433,
-      roughness: 0.6,
-      metalness: 0.3,
-    }),
-    columnBase: new THREE.MeshStandardMaterial({
-      map: createConcreteTexture(),
-      roughness: 0.7,
-      metalness: 0.2,
-    }),
-    columnTop: new THREE.MeshStandardMaterial({
-      color: 0x444440,
-      roughness: 0.6,
-      metalness: 0.3,
-    }),
+    // Floors — real PNG textures (brightness-boosted)
+    floor: mat(createFloorTexture()),
+    hallwayFloor: mat(createHallwayFloorTexture()),
+    balconyFloor: mat(createBalconyFloorTexture()),
+    step: mat(createStairTexture()),
+    dirtFloor: mat(createDirtTexture()),
+    // Walls — ALL use the real PNG wall textures (brightness-boosted)
+    wallConcrete: mat(createWallConcreteTexture()),
+    wallBrick: mat(createWallBrickTexture()),
+    wallDark: mat(createWallDarkTexture()),
+    wallDamaged: mat(createWallDamagedTexture()),
+    wallpaper: mat(createWallConcreteTexture()),
+    // Ceiling and details
+    ceiling: mat(createCeilingTexture()),
+    concrete: mat(createWallConcreteTexture()),
+    wood: mat(createWoodTexture()),
+    darkWood: solid(0x6a4428),
+    metal: mat(createMetalTexture()),
+    metalDark: solid(0x505058),
+    crate: mat(createWoodTexture()),
+    rail: solid(0x808080),
+    undersideMat: solid(0x3a3a3a),
+    dark: solid(0x2a2a2a),
+    chair: solid(0x7a5530),
+    barrel: solid(0x556644),
+    columnBase: mat(createWallConcreteTexture()),
+    columnTop: solid(0x6a6a60),
   };
 }
 
@@ -1032,21 +1235,7 @@ function createChandelier(scene, flickerLights, x, y, z) {
     scene.add(flame);
   }
 
-  // Main chandelier light
-  const light = new THREE.PointLight(0xffaa55, 4.0, 35, 2);
-  light.position.set(x, y, z);
-  light.castShadow = true;
-  light.shadow.mapSize.set(1024, 1024);
-  scene.add(light);
-
-  flickerLights.push({
-    light,
-    bulb: ring,
-    baseIntensity: 4.0,
-    flickerSpeed: 3 + Math.random() * 2,
-    flickerAmount: 0.12,
-    phase: 0,
-  });
+  // No dedicated chandelier light — center overhead light in setupLighting covers this
 }
 
 // ============================================================
@@ -1082,10 +1271,17 @@ function createBoardedWindow(scene, mats, x, z, rotY) {
     g.add(board);
   }
 
-  // Faint light leak
-  const leak = new THREE.PointLight(0x6688aa, 0.25, 5, 2);
-  leak.position.set(0, 2.5, 0.5);
-  g.add(leak);
+  // Light leak visual (emissive mesh, no actual light — saves GPU)
+  const leakMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.5, 1.5),
+    new THREE.MeshBasicMaterial({
+      color: 0x334455,
+      transparent: true,
+      opacity: 0.15,
+    }),
+  );
+  leakMesh.position.set(0, 2.5, 0.5);
+  g.add(leakMesh);
 
   scene.add(g);
 }
@@ -1127,12 +1323,7 @@ function createMainDoor(scene, x, z, mats) {
   door.castShadow = true;
   scene.add(door);
 
-  // Light through
-  const doorLight = new THREE.SpotLight(0x556677, 0.5, 10, Math.PI / 6, 0.5);
-  doorLight.position.set(x, 3, z + 1);
-  doorLight.target.position.set(x, 0, z - 3);
-  scene.add(doorLight);
-  scene.add(doorLight.target);
+  // No spotlight — ambient covers this area
 }
 
 // ============================================================
@@ -1251,12 +1442,7 @@ function createMysteryBox(scene, obstacles, x, baseY, z) {
     y: by - 0.17,
     z: z + 0.31,
   });
-  scene.add(
-    new THREE.PointLight(0xffcc00, 1.0, 5, 2)
-      .translateX(x)
-      .translateY(by + 0.5)
-      .translateZ(z),
-  );
+  // No PointLight — emissive materials handle the glow visually
 }
 
 // ============================================================
@@ -1288,9 +1474,7 @@ function createPerkMachine(scene, obstacles, x, baseY, z) {
     y: my + 1.3,
     z: z + 0.31,
   });
-  const glow = new THREE.PointLight(0x00ff66, 0.6, 4, 2);
-  glow.position.set(x, my + 1.5, z + 0.5);
-  scene.add(glow);
+  // No PointLight — screen emissive handles glow
 }
 
 // ============================================================
@@ -1333,10 +1517,7 @@ function createPowerSwitch(scene, x, y, z) {
   label.position.set(x, y + 0.48, z + 0.05);
   scene.add(label);
 
-  // Small indicator light (red = off)
-  const indicator = new THREE.PointLight(0xff2200, 0.3, 2, 2);
-  indicator.position.set(x, y + 0.5, z + 0.1);
-  scene.add(indicator);
+  // No PointLight — emissive label handles glow
 }
 
 // ============================================================
@@ -1409,10 +1590,7 @@ function createWeaponWall(scene, x, z) {
     2,
   );
 
-  // Glow light
-  const glow = new THREE.PointLight(0x00ff44, 0.4, 6, 2);
-  glow.position.set(0.5, 2.5, 0);
-  g.add(glow);
+  // No PointLight — emissive gun outlines handle glow
 
   // Header bar
   const headerMat = new THREE.MeshStandardMaterial({
@@ -1450,10 +1628,7 @@ function createAmmoStation(scene, x, z) {
   label.position.set(x, 0.5, z + 0.31);
   scene.add(label);
 
-  // Small glow
-  const glow = new THREE.PointLight(0xffaa00, 0.3, 3, 2);
-  glow.position.set(x, 0.8, z);
-  scene.add(glow);
+  // No PointLight — emissive label handles glow
 }
 
 // ============================================================
@@ -1525,52 +1700,68 @@ function createBloodStains(scene) {
 // LIGHTING
 // ============================================================
 function setupLighting(scene, flickerLights) {
-  // Ambient fill — bright enough to clearly see geometry
-  scene.add(new THREE.AmbientLight(0x556677, 2.0));
-  scene.add(new THREE.HemisphereLight(0x889aaa, 0x443322, 1.0));
+  // Strong ambient for MeshBasicMaterial floors/walls + MeshStandardMaterial zombies
+  scene.add(new THREE.AmbientLight(0xffffff, 12.0));
+  scene.add(new THREE.HemisphereLight(0xffeedd, 0x887766, 8.0));
 
-  // Overhead warm lights
+  // Four directional fill lights from all corners — ensures zombies are lit everywhere
+  const dirLight1 = new THREE.DirectionalLight(0xffeedd, 5.0);
+  dirLight1.position.set(15, ROOM_HEIGHT, 15);
+  dirLight1.castShadow = false;
+  scene.add(dirLight1);
+
+  const dirLight2 = new THREE.DirectionalLight(0xddeeff, 4.0);
+  dirLight2.position.set(-15, ROOM_HEIGHT, -15);
+  dirLight2.castShadow = false;
+  scene.add(dirLight2);
+
+  const dirLight3 = new THREE.DirectionalLight(0xffeedd, 3.0);
+  dirLight3.position.set(15, ROOM_HEIGHT, -15);
+  dirLight3.castShadow = false;
+  scene.add(dirLight3);
+
+  const dirLight4 = new THREE.DirectionalLight(0xddeeff, 3.0);
+  dirLight4.position.set(-15, ROOM_HEIGHT, 15);
+  dirLight4.castShadow = false;
+  scene.add(dirLight4);
+
+  // Point lights spread across arena — decay=1 for wide reach
   const configs = [
-    // Warm fill lights
-    { p: [-10, ROOM_HEIGHT - 0.5, -10], c: 0xff9944, i: 2.0, r: 22 },
-    { p: [10, ROOM_HEIGHT - 0.5, 10], c: 0xff9944, i: 2.0, r: 22 },
-    { p: [-10, ROOM_HEIGHT - 0.5, 16], c: 0xff8833, i: 1.8, r: 20 },
-    { p: [10, ROOM_HEIGHT - 0.5, -16], c: 0xff8833, i: 1.8, r: 20 },
-    // Cold blue corners
-    { p: [-26, ROOM_HEIGHT - 0.5, -26], c: 0x4466aa, i: 1.2, r: 18 },
-    { p: [26, ROOM_HEIGHT - 0.5, -26], c: 0x4466aa, i: 1.2, r: 18 },
-    { p: [-26, ROOM_HEIGHT - 0.5, 26], c: 0x4466aa, i: 1.2, r: 18 },
-    { p: [26, ROOM_HEIGHT - 0.5, 26], c: 0x5577bb, i: 1.2, r: 18 },
-    // Balcony warm lights
-    { p: [-22, SFH + 3, -22], c: 0xff6633, i: 1.5, r: 12 },
-    { p: [22, SFH + 3, -22], c: 0xff6633, i: 1.5, r: 12 },
-    { p: [-26, SFH + 3, 10], c: 0xff7744, i: 1.2, r: 10 },
-    { p: [26, SFH + 3, 10], c: 0xff7744, i: 1.2, r: 10 },
-    // Red emergency accent
-    { p: [22, 2.5, -18], c: 0xff1111, i: 0.8, r: 8 },
-    { p: [-22, 2.5, 20], c: 0xff1111, i: 0.8, r: 8 },
-    // Stage spotlights
-    { p: [-5, ROOM_HEIGHT - 0.5, -24], c: 0xffaa66, i: 2.5, r: 15 },
-    { p: [5, ROOM_HEIGHT - 0.5, -24], c: 0xffaa66, i: 2.5, r: 15 },
+    // Center warm fill (main light, massive reach)
+    { p: [0, ROOM_HEIGHT - 0.5, 0], c: 0xffcc88, i: 12.0, r: 90 },
+    // Front warm
+    { p: [0, ROOM_HEIGHT - 0.5, 20], c: 0xffaa66, i: 9.0, r: 60 },
+    // Back warm
+    { p: [0, ROOM_HEIGHT - 0.5, -20], c: 0xffbb77, i: 9.0, r: 60 },
+    // Left cool
+    { p: [-22, ROOM_HEIGHT - 0.5, 0], c: 0x88aadd, i: 8.0, r: 55 },
+    // Right cool
+    { p: [22, ROOM_HEIGHT - 0.5, 0], c: 0x88aadd, i: 8.0, r: 55 },
+    // Left-back corner
+    { p: [-20, ROOM_HEIGHT - 0.5, -18], c: 0xffaa66, i: 7.0, r: 50 },
+    // Right-front corner
+    { p: [20, ROOM_HEIGHT - 0.5, 18], c: 0xffaa66, i: 7.0, r: 50 },
+    // Left-front corner
+    { p: [-20, ROOM_HEIGHT - 0.5, 18], c: 0xffcc88, i: 6.0, r: 45 },
+    // Right-back corner
+    { p: [20, ROOM_HEIGHT - 0.5, -18], c: 0xffcc88, i: 6.0, r: 45 },
+    // Red emergency accent (atmosphere — ground level)
+    { p: [0, 2.5, -18], c: 0xff3311, i: 4.0, r: 30 },
+    // Additional low-level fill lights for zombie visibility
+    { p: [0, 1.5, 0], c: 0xffffff, i: 5.0, r: 60 },
+    { p: [-15, 1.5, 10], c: 0xffffff, i: 4.0, r: 40 },
+    { p: [15, 1.5, -10], c: 0xffffff, i: 4.0, r: 40 },
   ];
 
   for (const lc of configs) {
-    const light = new THREE.PointLight(lc.c, lc.i, lc.r, 2);
+    const light = new THREE.PointLight(lc.c, lc.i, lc.r, 1);
     light.position.set(...lc.p);
-    light.castShadow = lc.i >= 2.0;
-    if (light.castShadow) light.shadow.mapSize.set(512, 512);
+    light.castShadow = false;
     scene.add(light);
 
-    // Fixture
-    const housing = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.15, 0.25, 0.12, 8),
-      new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.5 }),
-    );
-    housing.position.set(lc.p[0], lc.p[1] + 0.08, lc.p[2]);
-    scene.add(housing);
-
+    // Bulb mesh
     const bulb = new THREE.Mesh(
-      new THREE.SphereGeometry(0.05, 6, 6),
+      new THREE.SphereGeometry(0.08, 6, 6),
       new THREE.MeshBasicMaterial({ color: lc.c }),
     );
     bulb.position.set(lc.p[0], lc.p[1] - 0.04, lc.p[2]);
@@ -1580,8 +1771,8 @@ function setupLighting(scene, flickerLights) {
       light,
       bulb,
       baseIntensity: lc.i,
-      flickerSpeed: 2 + Math.random() * 4,
-      flickerAmount: 0.15 + Math.random() * 0.2,
+      flickerSpeed: 1.5 + Math.random() * 3,
+      flickerAmount: 0.08 + Math.random() * 0.1,
       phase: Math.random() * Math.PI * 2,
     });
   }

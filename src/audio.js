@@ -41,13 +41,43 @@ export function resumeAudio() {
   startMusic();
 }
 
-/** Start looping theme music */
+// Soundtrack playlist
+const SOUNDTRACK = [
+  { src: "/music_dead_sector.mp3", name: "Dead Sector Descent" },
+  { src: "/music_grave_circuit.mp3", name: "Grave Circuit Ascent" },
+  { src: "/music_graveyard.mp3", name: "Graveyard Checkpoint" },
+  { src: "/music_rotten.mp4", name: "Rotten Run Cycle" },
+  { src: "/music.mp3", name: "Original Theme" },
+];
+let currentTrackIndex = 0;
+
+/** Start looping soundtrack */
 function startMusic() {
   if (musicElement) return;
-  musicElement = new Audio("/music.mp3");
-  musicElement.loop = true;
-  musicElement.volume = 0.3;
+  musicElement = new Audio(SOUNDTRACK[currentTrackIndex].src);
+  musicElement.loop = false; // play through playlist
+  musicElement.volume = 0.35;
+  musicElement.addEventListener("ended", () => {
+    // Next track
+    currentTrackIndex = (currentTrackIndex + 1) % SOUNDTRACK.length;
+    musicElement.src = SOUNDTRACK[currentTrackIndex].src;
+    musicElement.play().catch(() => {});
+  });
   musicElement.play().catch(() => {});
+}
+
+/** Get current track name */
+export function getCurrentTrackName() {
+  return SOUNDTRACK[currentTrackIndex].name;
+}
+
+/** Skip to next track */
+export function nextTrack() {
+  if (!musicElement) return;
+  currentTrackIndex = (currentTrackIndex + 1) % SOUNDTRACK.length;
+  musicElement.src = SOUNDTRACK[currentTrackIndex].src;
+  musicElement.play().catch(() => {});
+  return SOUNDTRACK[currentTrackIndex].name;
 }
 
 /** Set music volume (separate from SFX) */
@@ -55,71 +85,57 @@ export function setMusicVolume(vol) {
   if (musicElement) musicElement.volume = Math.max(0, Math.min(1, vol));
 }
 
-/** Heavy punchy gunshot — deeper bass, louder crack, distortion */
+/** Gunshot sound — uses real MP3 file */
+let _gunshotBuffer = null;
+let _gunshotLoading = false;
+
+// Preload gunshot MP3
+function _preloadGunshot() {
+  if (_gunshotBuffer || _gunshotLoading) return;
+  _gunshotLoading = true;
+  fetch("/gunshot.mp3")
+    .then((r) => r.arrayBuffer())
+    .then((buf) => getCtx().decodeAudioData(buf))
+    .then((decoded) => {
+      _gunshotBuffer = decoded;
+    })
+    .catch(() => {
+      _gunshotLoading = false;
+    });
+}
+
 export function playGunshot() {
   const c = getCtx();
-  const now = c.currentTime;
+  _preloadGunshot();
 
-  // Noise burst for the crack (louder, longer)
-  const bufferSize = c.sampleRate * 0.12;
-  const buffer = c.createBuffer(1, bufferSize, c.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) {
-    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 2.5);
+  if (_gunshotBuffer) {
+    // Play the real gunshot MP3
+    const source = c.createBufferSource();
+    source.buffer = _gunshotBuffer;
+
+    const gain = c.createGain();
+    gain.gain.value = 0.7;
+
+    source.connect(gain).connect(getMaster());
+    source.start(0);
+  } else {
+    // Fallback: quick procedural shot while MP3 loads
+    const now = c.currentTime;
+    const bufferSize = c.sampleRate * 0.08;
+    const buffer = c.createBuffer(1, bufferSize, c.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 2.5);
+    }
+    const noise = c.createBufferSource();
+    noise.buffer = buffer;
+    const gain = c.createGain();
+    gain.gain.setValueAtTime(0.5, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+    noise.connect(gain).connect(getMaster());
+    noise.start(now);
+    noise.stop(now + 0.08);
   }
-
-  const noise = c.createBufferSource();
-  noise.buffer = buffer;
-
-  const filter = c.createBiquadFilter();
-  filter.type = "lowpass";
-  filter.frequency.setValueAtTime(4000, now);
-  filter.frequency.exponentialRampToValueAtTime(200, now + 0.12);
-
-  // Waveshaper for distortion crunch
-  const distortion = c.createWaveShaper();
-  const curve = new Float32Array(256);
-  for (let i = 0; i < 256; i++) {
-    const x = i / 128 - 1;
-    curve[i] = ((Math.PI + 4) * x) / (Math.PI + 4 * Math.abs(x));
-  }
-  distortion.curve = curve;
-
-  const gain = c.createGain();
-  gain.gain.setValueAtTime(0.8, now);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-
-  noise.connect(filter).connect(distortion).connect(gain).connect(getMaster());
-  noise.start(now);
-  noise.stop(now + 0.15);
-
-  // Deep bass thump (heavier)
-  const osc = c.createOscillator();
-  osc.type = "sine";
-  osc.frequency.setValueAtTime(180, now);
-  osc.frequency.exponentialRampToValueAtTime(30, now + 0.12);
-
-  const oscGain = c.createGain();
-  oscGain.gain.setValueAtTime(0.6, now);
-  oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-
-  osc.connect(oscGain).connect(getMaster());
-  osc.start(now);
-  osc.stop(now + 0.15);
-
-  // High-frequency snap (mechanical click)
-  const snap = c.createOscillator();
-  snap.type = "square";
-  snap.frequency.setValueAtTime(2000, now);
-  snap.frequency.exponentialRampToValueAtTime(800, now + 0.02);
-
-  const snapGain = c.createGain();
-  snapGain.gain.setValueAtTime(0.15, now);
-  snapGain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
-
-  snap.connect(snapGain).connect(getMaster());
-  snap.start(now);
-  snap.stop(now + 0.03);
 }
 
 /** Reload click-clack */

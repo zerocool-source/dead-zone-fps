@@ -52,6 +52,11 @@ export class Weapon {
     // Recoil state
     this.weaponKick = 0;
 
+    // Reusable objects — avoid per-frame allocation
+    this._tmpQuat = new THREE.Quaternion();
+    this._tmpVec = new THREE.Vector3();
+    this._tmpDir = new THREE.Vector3();
+
     // Input
     this.shooting = false;
     this._mouseAiming = false;
@@ -128,18 +133,20 @@ export class Weapon {
 
     playGunshot();
 
-    // Apply spread
+    // Ray fires straight from camera center — exactly where crosshair is
     const spread = this._spread * (this.aiming ? 0.3 : 1);
-    // Crosshair is at 65% from top (15% below center)
-    // Offset ray direction down to match where crosshair actually is
-    const crosshairOffsetY = -0.14; // radians down to match 65% crosshair position
-    const dir = new THREE.Vector3(0, 0, -1);
-    dir.x += (Math.random() - 0.5) * spread;
-    dir.y += crosshairOffsetY + (Math.random() - 0.5) * spread;
-    dir.normalize();
-    dir.applyQuaternion(this.camera.getWorldQuaternion(new THREE.Quaternion()));
+    this._tmpDir.set(
+      (Math.random() - 0.5) * spread,
+      (Math.random() - 0.5) * spread,
+      -1,
+    );
+    this._tmpDir.normalize();
+    this._tmpDir.applyQuaternion(this.camera.getWorldQuaternion(this._tmpQuat));
 
-    this.raycaster.set(this.camera.getWorldPosition(new THREE.Vector3()), dir);
+    this.raycaster.set(
+      this.camera.getWorldPosition(this._tmpVec),
+      this._tmpDir,
+    );
 
     const hits = this.raycaster.intersectObjects(targets, true);
     if (hits.length > 0) {
