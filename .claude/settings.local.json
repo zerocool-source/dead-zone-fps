@@ -31,7 +31,12 @@
       "Bash(ls -lh /Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/Desktop/seoul_city__gameready__render__blender__pbr*.glb)",
       "Bash(find /Users/breakpointcommericalpoolsystemsinc.a.idevelopmentantoinefreeman/FPS/public -type f -size +10M -exec ls -lh {})",
       "Bash(2)",
-      "Bash(git lfs:*)"
+      "Bash(git lfs:*)",
+      "Bash(git commit:*)",
+      "Bash(gh repo:*)",
+      "Bash(brew list:*)",
+      "Bash(git remote:*)",
+      "Bash(git push:*)"
     ]
   }
 }
