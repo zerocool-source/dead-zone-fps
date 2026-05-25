@@ -162,9 +162,10 @@ function toTex(canvas, repeatX = 1, repeatY = 1) {
 // FLOOR TEXTURES — detailed tile patterns
 // ═══════════════════════════════════════════════════════════
 
-/** Main floor — loads cracked_concrete.png asset, tiled across floor */
+/** Main floor — loads downstairs_floor.png (richer detail than the
+ * old cracked_concrete asset), tiled across floor */
 export function createFloorTexture() {
-  return loadPNG("/textures/cracked_concrete.png", 8, 8, 3.0);
+  return loadPNG("/textures/downstairs_floor.png", 8, 8, 3.0);
 }
 
 /** UNUSED procedural fallback kept for reference */
@@ -401,9 +402,10 @@ function _createHallwayFloorTextureFallback() {
   return toTex(c, 6, 6);
 }
 
-/** Balcony floor — uses real PNG */
+/** Balcony floor — uses real PNG. cracked_concrete makes the upstairs
+ * surface look distinct from the polished downstairs_floor. */
 export function createBalconyFloorTexture() {
-  return loadPNG("/textures/gritty_tiles_2.png", 4, 4, 3.0);
+  return loadPNG("/textures/cracked_concrete.png", 6, 6, 3.0);
 }
 function _createBalconyFloorTextureFallback() {
   const S = 512;

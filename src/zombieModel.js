@@ -72,64 +72,51 @@ function ensureAltLoaded(callback) {
   }
 }
 
-// ─── Fallback box zombie (used while GLB loads) ───────────────────────────
-function createFallbackZombie(scale, skinColorHex, eyeColorHex) {
+// ─── Shared zombie sprite texture (loaded once, reused by all fallback zombies)
+let _spriteTex = null;
+function _getSpriteTex() {
+  if (_spriteTex) return _spriteTex;
+  _spriteTex = new THREE.TextureLoader().load("/textures/zombie.png");
+  _spriteTex.colorSpace = THREE.LinearSRGBColorSpace;
+  return _spriteTex;
+}
+
+// ─── Fallback billboard zombie (used until GLB loads, or as permanent
+// fallback when the GLB is unavailable). A camera-facing sprite is
+// drastically less ugly than the boxy procedural zombie that used to live
+// here.
+function createFallbackZombie(scale, skinColorHex /*, eyeColorHex */) {
   const group = new THREE.Group();
   group.scale.setScalar(scale);
 
-  const skinColor = skinColorHex || 0x4a6b3a;
-  const eyeColor = eyeColorHex || 0xff2200;
+  // Billboard body — zombie.png is ~3:2 (1536x1024); render at 1.5w x 2.0h
+  // so the silhouette roughly matches the GLB zombie height (~2.0).
+  const tex = _getSpriteTex();
+  const spriteMat = new THREE.SpriteMaterial({
+    map: tex,
+    color: skinColorHex || 0xffffff,
+    transparent: true,
+    alphaTest: 0.5,
+  });
+  const sprite = new THREE.Sprite(spriteMat);
+  sprite.scale.set(1.6, 2.2, 1);
+  sprite.position.y = 1.1; // sprite center → feet at 0, head at 2.2
+  sprite.userData.isSpriteBody = true;
+  // Don't raycast the sprite — it requires a camera-aware raycaster and the
+  // invisible box hitbox below provides a stable target for bullets.
+  sprite.raycast = () => {};
+  group.add(sprite);
 
-  const mat = new THREE.MeshBasicMaterial({ color: skinColor });
-
-  // Simple body
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.8, 0.3), mat);
-  torso.position.y = 1.2;
-  group.add(torso);
-
-  const head = new THREE.Mesh(
-    new THREE.BoxGeometry(0.3, 0.3, 0.3),
-    new THREE.MeshBasicMaterial({ color: skinColor }),
-  );
-  head.position.y = 1.85;
-  group.add(head);
-
-  // Eyes
-  const eyeMat = new THREE.MeshBasicMaterial({ color: eyeColor });
-  const lEye = new THREE.Mesh(new THREE.SphereGeometry(0.04, 4, 4), eyeMat);
-  lEye.position.set(-0.08, 1.92, 0.16);
-  group.add(lEye);
-  const rEye = new THREE.Mesh(new THREE.SphereGeometry(0.04, 4, 4), eyeMat);
-  rEye.position.set(0.08, 1.92, 0.16);
-  group.add(rEye);
-
-  // Arms
-  const armMat = new THREE.MeshBasicMaterial({ color: skinColor });
-  const lArm = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.6, 0.15), armMat);
-  lArm.position.set(-0.4, 1.1, 0);
-  group.add(lArm);
-  const rArm = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.6, 0.15), armMat);
-  rArm.position.set(0.4, 1.1, 0);
-  group.add(rArm);
-
-  // Legs
-  const legMat = new THREE.MeshBasicMaterial({ color: 0x14110d });
-  const lLeg = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.7, 0.18), legMat);
-  lLeg.position.set(-0.15, 0.35, 0);
-  group.add(lLeg);
-  const rLeg = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.7, 0.18), legMat);
-  rLeg.position.set(0.15, 0.35, 0);
-  group.add(rLeg);
-
-  // Hitbox
+  // Invisible hitbox for raycasting — the sprite itself is also hittable,
+  // but the box gives a stable, depth-tolerant target.
   const hitbox = new THREE.Mesh(
-    new THREE.BoxGeometry(2.2, 2.6, 2.2),
+    new THREE.BoxGeometry(1.2, 2.2, 0.6),
     new THREE.MeshBasicMaterial({ visible: false }),
   );
-  hitbox.position.y = 1.3;
+  hitbox.position.y = 1.1;
   group.add(hitbox);
 
-  const allParts = [torso, head, lArm, rArm, lLeg, rLeg];
+  const allParts = [sprite];
   group.userData.bodyParts = allParts;
   group.userData.hitbox = hitbox;
 

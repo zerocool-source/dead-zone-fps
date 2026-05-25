@@ -157,8 +157,10 @@ class Zombie {
         const parts = this.mesh.userData.bodyParts || [];
         for (const part of parts) {
           if (part.material && part.material.color) {
-            // Reset to a neutral tint
-            part.material.color.setHex(0xcccccc);
+            // Sprite-backed bodies keep their original PNG colors (no tint);
+            // procedural mesh bodies get a slightly darkened neutral tint.
+            const tint = part.userData.isSpriteBody ? 0xffffff : 0xcccccc;
+            part.material.color.setHex(tint);
           }
         }
       }
