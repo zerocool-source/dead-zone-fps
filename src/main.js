@@ -554,8 +554,14 @@ document.addEventListener("pointerlockchange", () => {
     blocker.style.display = "none";
     hidePauseMenu();
     hud.show();
-    // Hide 2D sprite — 3D weapon model handles the viewmodel now
-    weaponSprite.hide();
+    // Use 2D sprite as fallback when the 3D weapon model isn't loaded
+    // (e.g. GLB assets unavailable). It'll get hidden in the render loop
+    // once the 3D model becomes active.
+    if (weaponModel.hasModel()) {
+      weaponSprite.hide();
+    } else {
+      weaponSprite.show();
+    }
     if (introVideo) introVideo.pause();
     if (menuMusic) menuMusic.pause();
     // Show chapter 1 title on first play
@@ -761,6 +767,11 @@ function gameLoop() {
     weaponModel.triggerReload();
   }
   weapon._wasReloading = weapon.reloading;
+
+  // Once the 3D weapon model finishes loading, swap from sprite fallback to it
+  if (weaponSprite.visible && weaponModel.hasModel()) {
+    weaponSprite.hide();
+  }
 
   // Weapon sprite
   if (weaponSprite.visible) {

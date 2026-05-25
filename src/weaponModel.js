@@ -384,6 +384,11 @@ export class WeaponModelRenderer {
     this.visible = false;
   }
 
+  /** True once at least one GLB has loaded and an active model is set. */
+  hasModel() {
+    return this._activeGroup !== null && this._activeModel !== null;
+  }
+
   // ── Frame update ──────────────────────────────────────────
 
   update(dt, isMoving, isSprinting, isReloading, reloadProgress, isAiming) {

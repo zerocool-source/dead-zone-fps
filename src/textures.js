@@ -11,14 +11,17 @@ import * as THREE from "three";
 // ═══════════════════════════════════════════════════════════
 
 function loadPNG(path, repeatX, repeatY, boost = 2.5) {
+  // Fixed canvas size: must not change after the CanvasTexture is created,
+  // or Three.js's texSubImage2D update will overflow the original GPU allocation.
+  const SIZE = 512;
   const canvas = document.createElement("canvas");
-  canvas.width = 256;
-  canvas.height = 256;
-  const ctx2d = canvas.getContext("2d");
+  canvas.width = SIZE;
+  canvas.height = SIZE;
+  const ctx2d = canvas.getContext("2d", { willReadFrequently: true });
 
   // Fill with visible gray immediately (not black) while PNG loads
   ctx2d.fillStyle = "#6a6a68";
-  ctx2d.fillRect(0, 0, 256, 256);
+  ctx2d.fillRect(0, 0, SIZE, SIZE);
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = THREE.RepeatWrapping;
@@ -30,12 +33,10 @@ function loadPNG(path, repeatX, repeatY, boost = 2.5) {
   img.crossOrigin = "anonymous";
   img.src = path;
   img.onload = () => {
-    canvas.width = img.width;
-    canvas.height = img.height;
-    ctx2d.drawImage(img, 0, 0);
+    ctx2d.drawImage(img, 0, 0, SIZE, SIZE);
 
     // Brighten all pixels so dark textures are visible with MeshBasicMaterial
-    const imageData = ctx2d.getImageData(0, 0, canvas.width, canvas.height);
+    const imageData = ctx2d.getImageData(0, 0, SIZE, SIZE);
     const data = imageData.data;
     for (let i = 0; i < data.length; i += 4) {
       data[i] = Math.min(255, Math.round(data[i] * boost));

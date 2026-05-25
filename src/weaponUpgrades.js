@@ -307,12 +307,11 @@ export class WeaponUpgradeManager {
       if (station.weaponKey === "ak47") {
         // AK-47 wall mount with canvas-generated texture
         const mountImg = new Image();
-        mountImg.src = makeAKWallMount();
         const mountTex = new THREE.Texture(mountImg);
         mountImg.onload = () => {
           mountTex.needsUpdate = true;
         };
-        mountTex.needsUpdate = true;
+        mountImg.src = makeAKWallMount();
         const mountMat = new THREE.MeshBasicMaterial({
           map: mountTex,
           transparent: true,
