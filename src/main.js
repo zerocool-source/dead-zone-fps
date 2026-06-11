@@ -398,6 +398,15 @@ setupBarricades();
 const roundDirector = new RoundDirector(enemyManager, hud);
 roundDirector.setSpawnPoints(spawnPoints);
 
+// Dev/test hook — only set in dev to allow Playwright probes to introspect
+// the running game (camera direction, zombies, etc). Safe to leave: it's a
+// reference, not a global mutation surface.
+if (import.meta.env.DEV) {
+  window.__game = {
+    camera, player, weapon, enemyManager, roundDirector, scene,
+  };
+}
+
 // Traps
 const trapManager = new TrapManager(scene);
 function setupTraps() {
