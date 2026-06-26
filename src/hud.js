@@ -231,7 +231,10 @@ export class HUD {
     const off = document.createElement('canvas'); off.width = n + 1; off.height = n + 1;
     const ctx = off.getContext('2d');
     const img = ctx.createImageData(n + 1, n + 1);
-    const COL = { 0: [26, 58, 92], 1: [200, 182, 122], 2: [82, 122, 56], 3: [46, 86, 40], 4: [108, 104, 98], 5: [232, 238, 246] };
+    const COL = {
+      0: [26, 58, 92], 1: [204, 186, 128], 2: [209, 176, 102], 3: [148, 140, 69], 4: [87, 128, 59],
+      5: [46, 92, 43], 6: [31, 82, 36], 7: [61, 92, 77], 8: [140, 148, 140], 9: [236, 240, 246], 10: [108, 104, 98],
+    };
     for (let i = 0; i < w.biome.length; i++) {
       const c = COL[w.biome[i]] || [60, 60, 60];
       img.data[i * 4] = c[0]; img.data[i * 4 + 1] = c[1]; img.data[i * 4 + 2] = c[2]; img.data[i * 4 + 3] = 255;

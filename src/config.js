@@ -12,9 +12,9 @@ export const WORLD = {
 // build scales their size. Each tribe is seeded as one of these races.
 export const RACES = {
   dawnfolk:  { name: 'Dawnfolk',  mesh: 'being', hue: 0.07, build: 1.00, biome: 'grass',  trait: { kind: 0.3 } },
-  emberfolk: { name: 'Emberfolk', mesh: 'ember', hue: 0.03, build: 0.94, biome: 'beach',  trait: { brave: 0.4 } },
-  frostborn: { name: 'Frostborn', mesh: 'frost', hue: 0.60, build: 1.14, biome: 'rock',   trait: { brave: 0.25, social: -0.1 } },
-  thornkin:  { name: 'Thornkin',  mesh: 'thorn', hue: 0.32, build: 1.05, biome: 'forest', trait: { curious: 0.4 } },
+  emberfolk: { name: 'Emberfolk', mesh: 'ember', hue: 0.03, build: 0.94, biome: 'desert', trait: { brave: 0.4 } },
+  frostborn: { name: 'Frostborn', mesh: 'frost', hue: 0.60, build: 1.14, biome: 'taiga',  trait: { brave: 0.25, social: -0.1 } },
+  thornkin:  { name: 'Thornkin',  mesh: 'thorn', hue: 0.32, build: 1.05, biome: 'jungle', trait: { curious: 0.4 } },
 };
 
 export const TRIBES = { COUNT: 6, START_POP: 9 };

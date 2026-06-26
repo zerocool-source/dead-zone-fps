@@ -8,11 +8,16 @@ import { BIOME } from './world.js';
 
 const BIOME_COLOR = {
   [BIOME.OCEAN]: [0.05, 0.18, 0.32],
-  [BIOME.BEACH]: [0.78, 0.71, 0.48],
-  [BIOME.GRASS]: [0.32, 0.48, 0.22],
-  [BIOME.FOREST]: [0.18, 0.34, 0.16],
-  [BIOME.ROCK]: [0.42, 0.40, 0.38],
+  [BIOME.BEACH]: [0.80, 0.73, 0.50],
+  [BIOME.DESERT]: [0.82, 0.69, 0.40],
+  [BIOME.SAVANNA]: [0.58, 0.55, 0.27],
+  [BIOME.GRASS]: [0.34, 0.50, 0.23],
+  [BIOME.FOREST]: [0.18, 0.36, 0.17],
+  [BIOME.JUNGLE]: [0.12, 0.32, 0.14],
+  [BIOME.TAIGA]: [0.24, 0.36, 0.30],
+  [BIOME.TUNDRA]: [0.55, 0.58, 0.55],
   [BIOME.SNOW]: [0.92, 0.94, 0.97],
+  [BIOME.ROCK]: [0.42, 0.40, 0.38],
 };
 
 export class Renderer {
