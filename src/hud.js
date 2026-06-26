@@ -108,9 +108,27 @@ export class HUD {
     this.elHint.textContent = 'Observe your world. Select a being to read their mind.';
     root.appendChild(this.elHint);
 
-    // ---- inspector (right) ----
+    // ---- minimap (top-right) — shows the whole continent + every tribe ----
+    const mm = this._el('div', 'panel pointer');
+    mm.style.cssText += 'position:absolute;right:14px;top:14px;padding:8px;';
+    mm.innerHTML = `<div style="color:var(--gold-dim);font-size:10px;letter-spacing:2px;margin-bottom:5px;">THE CONTINENT</div>`;
+    this.miniSize = 200;
+    this.miniCanvas = document.createElement('canvas');
+    this.miniCanvas.width = this.miniSize; this.miniCanvas.height = this.miniSize;
+    this.miniCanvas.style.cssText = 'display:block;border-radius:3px;cursor:crosshair;';
+    mm.appendChild(this.miniCanvas);
+    root.appendChild(mm);
+    this.miniCtx = this.miniCanvas.getContext('2d');
+    this.miniCanvas.addEventListener('click', (e) => {
+      const r = this.miniCanvas.getBoundingClientRect();
+      const px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height;
+      const wx = (px - 0.5) * this.sim.world.size, wz = (py - 0.5) * this.sim.world.size;
+      if (this.renderer) this.renderer.flyTo(wx, wz);
+    });
+
+    // ---- inspector (right, below the minimap) ----
     this.inspector = this._el('div', 'panel pointer');
-    this.inspector.style.cssText += 'position:absolute;right:14px;top:14px;width:280px;max-height:calc(100vh - 200px);overflow-y:auto;padding:0;display:none;';
+    this.inspector.style.cssText += 'position:absolute;right:14px;top:248px;width:280px;max-height:calc(100vh - 440px);overflow-y:auto;padding:0;display:none;';
     root.appendChild(this.inspector);
 
     // ---- chronicle (bottom-right) ----
@@ -132,6 +150,11 @@ export class HUD {
     this.tribesPanel.innerHTML = `<div style="color:var(--gold-dim);font-size:10px;letter-spacing:2px;margin-bottom:5px;">PEOPLES</div><div id="tribes-list"></div>`;
     root.appendChild(this.tribesPanel);
     this.elTribes = this.tribesPanel.querySelector('#tribes-list');
+    this.elTribes.addEventListener('click', (e) => {
+      const row = e.target.closest('[data-idx]'); if (!row) return;
+      const t = this.sim.tribes[+row.dataset.idx];
+      if (t && this.renderer) this.renderer.flyTo(t.home.x, t.home.z);
+    });
 
     this.setTool('inspect');
     this._renderChron();
@@ -140,15 +163,17 @@ export class HUD {
   _renderTribes() {
     if (!this.elTribes) return;
     const s = this.sim;
-    this.elTribes.innerHTML = s.tribes.map(t => {
+    this.elTribes.innerHTML = s.tribes.map((t, i) => {
       const pop = s.membersOf(t).length;
       const col = `hsl(${Math.round(t.color * 360)},55%,62%)`;
       const era = eraOf(t.tech) + ' Age';
-      return `<div style="display:flex;align-items:center;gap:6px;margin:3px 0;font-size:11px;">
-        <span style="width:9px;height:9px;border-radius:50%;background:${col};flex:none;"></span>
-        <span style="flex:1;color:var(--text);">${t.name}</span>
-        <span style="color:var(--text-dim);">${pop}</span></div>
-        <div style="font-size:9px;color:var(--text-dim);margin:-1px 0 3px 15px;">${t.race.name} · ${era}${pop === 0 ? ' · ✝' : ''}</div>`;
+      const war = t._wars && t._wars.size ? ' ⚔' : '';
+      return `<div data-idx="${i}" title="Click to fly here" style="cursor:pointer;border-radius:4px;padding:2px 3px;margin:1px 0;">
+        <div style="display:flex;align-items:center;gap:6px;font-size:11px;">
+          <span style="width:9px;height:9px;border-radius:50%;background:${col};flex:none;"></span>
+          <span style="flex:1;color:var(--text);">${t.name}${war}</span>
+          <span style="color:var(--text-dim);">${pop}</span></div>
+        <div style="font-size:9px;color:var(--text-dim);margin:-1px 0 1px 15px;">${t.race.name} · ${era}${pop === 0 ? ' · ✝' : ''}</div></div>`;
     }).join('');
   }
 
@@ -198,6 +223,44 @@ export class HUD {
     });
     if (this.selected && this.selected.alive) this._renderInspector();
     else if (this.selected) { this.selected = null; this.inspector.style.display = 'none'; }
+    this._drawMinimap();
+  }
+
+  _renderMiniTerrain() {
+    const w = this.sim.world, n = w.seg;
+    const off = document.createElement('canvas'); off.width = n + 1; off.height = n + 1;
+    const ctx = off.getContext('2d');
+    const img = ctx.createImageData(n + 1, n + 1);
+    const COL = { 0: [26, 58, 92], 1: [200, 182, 122], 2: [82, 122, 56], 3: [46, 86, 40], 4: [108, 104, 98], 5: [232, 238, 246] };
+    for (let i = 0; i < w.biome.length; i++) {
+      const c = COL[w.biome[i]] || [60, 60, 60];
+      img.data[i * 4] = c[0]; img.data[i * 4 + 1] = c[1]; img.data[i * 4 + 2] = c[2]; img.data[i * 4 + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    this._miniTerrain = off;
+  }
+
+  _drawMinimap() {
+    if (!this.miniCtx) return;
+    if (!this._miniTerrain) this._renderMiniTerrain();
+    const S = this.miniSize, ctx = this.miniCtx, w = this.sim.world;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(this._miniTerrain, 0, 0, S, S);
+    const toPx = (wx, wz) => [(wx / w.size + 0.5) * S, (wz / w.size + 0.5) * S];
+    // tribe markers
+    for (const t of this.sim.tribes) {
+      if (!this.sim.membersOf(t).length) continue;
+      const [x, y] = toPx(t.home.x, t.home.z);
+      const r = 3 + Math.min(6, this.sim.membersOf(t).length / 6);
+      ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = `hsl(${Math.round(t.color * 360)},65%,60%)`; ctx.fill();
+      ctx.lineWidth = 1.5; ctx.strokeStyle = (t._wars && t._wars.size) ? '#ff5a3a' : 'rgba(0,0,0,0.5)'; ctx.stroke();
+    }
+    // camera target
+    if (this.renderer && this.renderer.camTarget) {
+      const [cx, cy] = toPx(this.renderer.camTarget.x, this.renderer.camTarget.z);
+      ctx.beginPath(); ctx.arc(cx, cy, 4, 0, 7); ctx.strokeStyle = '#e8c87a'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx - 7, cy); ctx.lineTo(cx + 7, cy); ctx.moveTo(cx, cy - 7); ctx.lineTo(cx, cy + 7); ctx.stroke();
+    }
   }
 
   selectBeing(b) {

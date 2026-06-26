@@ -32,6 +32,7 @@ async function boot() {
 
   renderer = new Renderer(sim, assets);
   window.AEON.renderer = renderer;
+  hud.renderer = renderer;   // minimap + tribe-fly need the camera
   renderer.mount(document.body);
   // a couple of frames so terrain/beings exist before reveal
   renderer.syncBeings();

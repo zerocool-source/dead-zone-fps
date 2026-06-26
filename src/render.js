@@ -40,9 +40,9 @@ export class Renderer {
     this.scene.background = new THREE.Color(0x0a0d14);
     this.scene.fog = new THREE.Fog(0x0a0d14, WORLD.SIZE * 0.7, WORLD.SIZE * 1.7);
 
-    this.camera = new THREE.PerspectiveCamera(50, w / h, 0.5, 2000);
+    this.camera = new THREE.PerspectiveCamera(50, w / h, 0.5, 3000);
     const home = this.sim.home;
-    this.camera.position.set(home.x + 38, 34, home.z + 48);
+    this.camera.position.set(home.x + 52, 48, home.z + 66);
 
     this.controls = new OrbitControls(this.camera, this.canvas);
     this.controls.enableDamping = true;
@@ -562,8 +562,12 @@ export class Renderer {
       }
       g.position.set(b.x, b.y, b.z);
       g.rotation.y = -b.heading + Math.PI / 2 || 0;
-      g.userData.halo.material.opacity = Math.min(0.85, b.godAwareness);
       const dist = this.camera.position.distanceTo(g.position);
+      // cull distant beings entirely so wide / continental views stay fast
+      const vis = dist < 320;
+      if (g.visible !== vis) g.visible = vis;
+      if (!vis) { g.userData.bubble.visible = false; continue; }
+      g.userData.halo.material.opacity = Math.min(0.85, b.godAwareness);
       // locomotion: real rig walk if animated (LOD: only step the skeleton when near)
       if (g.userData.mixer) {
         if (dist < 200) {
@@ -596,6 +600,14 @@ export class Renderer {
     const dist = close ? 7 : 14;
     this.camera.position.set(b.x + dist, b.y + dist * (close ? 0.5 : 0.7), b.z + dist);
   }
+
+  // fly the camera to a world location (used by the minimap / tribes panel)
+  flyTo(x, z, dist = 46) {
+    const y = this.sim.world.heightAt(x, z);
+    this.controls.target.set(x, y + 2, z);
+    this.camera.position.set(x + dist, y + dist * 0.7, z + dist);
+  }
+  get camTarget() { return this.controls ? this.controls.target : { x: 0, z: 0 }; }
 
   raycastBeing(ndc) {
     this.raycaster.setFromCamera(ndc, this.camera);
