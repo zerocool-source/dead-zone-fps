@@ -49,7 +49,17 @@ export const RES = {
   STORE_COST: { wood: 20, stone: 8 },
 };
 
-export const JOBS = ['forager', 'hunter', 'woodcutter', 'miner', 'builder', 'farmer', 'leader'];
+export const JOBS = ['forager', 'hunter', 'woodcutter', 'miner', 'builder', 'farmer', 'warrior', 'leader'];
+
+// conflict between tribes
+export const COMBAT = {
+  WAR_THRESHOLD: -45,   // standing at/below this means war
+  PEACE_THRESHOLD: -10, // standing above this ends a war
+  RANGE: 2.2,           // strike distance
+  SIGHT: 34,            // how far a warrior spots an enemy
+  DAMAGE: 26,           // base hit (scaled by skill/build)
+  HEAL_PER_DAY: 22,     // out-of-combat recovery
+};
 
 // fauna for hunting
 export const FAUNA = {
@@ -83,15 +93,29 @@ export const FOOD = {
   REGROW_DAYS: 2.5,    // days to regrow one berry
 };
 
-// Knowledge thresholds — culture-wide discoveries (emergent-ish, gated by conditions).
+// Knowledge thresholds — culture-wide discoveries. `era` marks the age each one opens.
 export const TECH = [
-  { id: 'fire',     name: 'Fire',        needPop: 0,  needInsight: 30,   desc: 'Warmth, safety, cooked food.' },
-  { id: 'tools',    name: 'Stone Tools', needPop: 0,  needInsight: 130,  desc: 'Sharper foraging and building.' },
-  { id: 'shelter',  name: 'Shelter',     needPop: 6,  needInsight: 340,  desc: 'Permanent homes; a village forms.' },
-  { id: 'language', name: 'Language',    needPop: 8,  needInsight: 680,  desc: 'Stories, names, shared memory.' },
-  { id: 'ritual',   name: 'Ritual',      needPop: 10, needInsight: 1150, desc: 'They begin to wonder about you.' },
-  { id: 'farming',  name: 'Farming',     needPop: 12, needInsight: 1900, desc: 'Food they grow themselves.' },
+  { id: 'fire',     name: 'Fire',        needPop: 0,  needInsight: 30,   era: 'Stone',      desc: 'Warmth, safety, cooked food.' },
+  { id: 'tools',    name: 'Stone Tools', needPop: 0,  needInsight: 130,  era: 'Stone',      desc: 'Sharper foraging and building.' },
+  { id: 'shelter',  name: 'Shelter',     needPop: 6,  needInsight: 340,  era: 'Stone',      desc: 'Permanent homes; a village forms.' },
+  { id: 'language', name: 'Language',    needPop: 8,  needInsight: 680,  era: 'Stone',      desc: 'Stories, names, shared memory.' },
+  { id: 'ritual',   name: 'Ritual',      needPop: 10, needInsight: 1150, era: 'Stone',      desc: 'They begin to wonder about you.' },
+  { id: 'farming',  name: 'Farming',     needPop: 12, needInsight: 1900, era: 'Stone',      desc: 'Food they grow themselves.' },
+  { id: 'pottery',  name: 'Pottery',     needPop: 14, needInsight: 2700, era: 'Stone',      desc: 'Storage, surplus, trade goods.' },
+  { id: 'bronze',   name: 'Bronze Working', needPop: 16, needInsight: 3800, era: 'Bronze', desc: 'Metal tools and the first blades. The Bronze Age dawns.' },
+  { id: 'writing',  name: 'Writing',     needPop: 18, needInsight: 5200, era: 'Bronze',     desc: 'Law, record, and memory beyond a lifetime.' },
+  { id: 'wheel',    name: 'The Wheel',   needPop: 18, needInsight: 6800, era: 'Bronze',     desc: 'Carts, trade roads, faster everything.' },
+  { id: 'iron',     name: 'Iron Working', needPop: 22, needInsight: 9000, era: 'Iron',      desc: 'Hard tools, hard weapons. The Iron Age begins.' },
+  { id: 'masonry',  name: 'Masonry',     needPop: 24, needInsight: 12000, era: 'Iron',      desc: 'Walls, temples, the first true cities.' },
 ];
+
+// the age a tribe is in, by the most advanced tech it holds
+export const ERAS = ['Stone', 'Bronze', 'Iron', 'Classical'];
+export function eraOf(techIds) {
+  let era = 'Stone';
+  for (const t of TECH) if (techIds.includes(t.id)) era = t.era;
+  return era;
+}
 
 export const GOD = {
   FAITH_START: 20,

@@ -1,6 +1,6 @@
 // HUD — all on-screen UI. Builds DOM into #ui-root, reflects sim/god state, and emits
 // tool changes. Keeps the "beings & their minds" focus: a rich inspector for one being.
-import { TIME_SCALES, TIME_LABELS, GOD, LIFE } from './config.js';
+import { TIME_SCALES, TIME_LABELS, GOD, LIFE, eraOf } from './config.js';
 
 const TOOLS = [
   { id: 'inspect', icon: '🔍', name: 'Observe', cost: 0, hint: 'Click a being to read their mind.' },
@@ -143,7 +143,7 @@ export class HUD {
     this.elTribes.innerHTML = s.tribes.map(t => {
       const pop = s.membersOf(t).length;
       const col = `hsl(${Math.round(t.color * 360)},55%,62%)`;
-      const era = t.tech.length >= 6 ? 'Farming' : t.tech.length >= 4 ? 'Language' : t.tech.length >= 1 ? 'Fire' : 'Stone';
+      const era = eraOf(t.tech) + ' Age';
       return `<div style="display:flex;align-items:center;gap:6px;margin:3px 0;font-size:11px;">
         <span style="width:9px;height:9px;border-radius:50%;background:${col};flex:none;"></span>
         <span style="flex:1;color:var(--text);">${t.name}</span>
@@ -261,6 +261,7 @@ export class HUD {
         ${b.job ? `<div style="margin-top:5px;display:inline-block;font-size:10px;letter-spacing:1px;color:#0c0e14;background:${(b.tribe&&b.id===b.tribe.leaderId)?'#e8c87a':'var(--gold-dim)'};padding:2px 7px;border-radius:3px;">${(b.tribe&&b.id===b.tribe.leaderId)?'👑 LEADER':b.job.toUpperCase()}</div>` : ''}
       </div>
       <div style="padding:10px 14px;">
+        ${b.health < 100 ? this._bar('Health', b.health, '#cc5544') : ''}
         ${this._bar('Hunger', b.hunger, '#c87a4a')}
         ${this._bar('Energy', b.energy, '#6aa0c8')}
         ${this._bar('Social', b.social, '#9a7ac8')}
@@ -299,7 +300,7 @@ export class HUD {
       talking: 'with others', courting: 'courting', wandering: 'wandering', seeking: 'following a strange urge', grieving: 'grieving',
       'chopping wood': 'chopping wood', 'mining stone': 'mining stone', hunting: 'hunting game',
       hauling: 'hauling goods home', building: 'building a home', farming: 'working the fields',
-      playing: 'playing', leading: 'leading the people',
+      playing: 'playing', leading: 'leading the people', fighting: 'in battle', fleeing: 'fleeing danger',
     };
     return (verbs[b.action] || b.action) + '.';
   }
@@ -324,6 +325,6 @@ export class HUD {
     ).join('');
   }
   _chronColor(kind) {
-    return { god: '#e8c87a', tech: '#7fae6a', death: '#b5705a', epoch: '#c9a86a', birth: '#9ab5d0' }[kind] || 'var(--text)';
+    return { god: '#e8c87a', tech: '#7fae6a', death: '#b5705a', epoch: '#c9a86a', birth: '#9ab5d0', war: '#d0594a', gov: '#e8c87a' }[kind] || 'var(--text)';
   }
 }

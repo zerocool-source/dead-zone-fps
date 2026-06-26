@@ -111,6 +111,7 @@ export class Renderer {
       'chopping wood': ['🪓', '#8a6a3a'], 'mining stone': ['⛏', '#7a7a82'], hunting: ['🏹', '#9a5a3a'],
       hauling: ['📦', '#a07a4a'], building: ['🔨', '#b08040'], farming: ['🌾', '#caa24a'],
       playing: ['🙂', '#7aa0c0'], leading: ['👑', '#d8b85a'],
+      fighting: ['⚔', '#d0594a'], fleeing: ['🏃', '#d0a04a'],
     };
     this.bubbleMats = {};
     for (const k in B) {

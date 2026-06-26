@@ -1,7 +1,7 @@
 // A Being ("bean") — an autonomous agent. Needs + personality + memory + relationships
 // + a utility-AI brain. Architected so a promoted being can later defer to an LLM "soul"
 // (see decide(): the hook is `this.soul`).
-import { NEEDS, LIFE, RES, DAYTIME } from './config.js';
+import { NEEDS, LIFE, RES, DAYTIME, COMBAT } from './config.js';
 import { BIOME } from './world.js';
 import { makeName } from './names.js';
 
@@ -11,7 +11,7 @@ export const ACTION = {
   IDLE: 'resting', FORAGE: 'foraging', EAT: 'eating', REST: 'sleeping',
   SOCIAL: 'talking', MATE: 'courting', WANDER: 'wandering', SEEK: 'seeking', GRIEVE: 'grieving',
   CHOP: 'chopping wood', MINE: 'mining stone', HUNT: 'hunting', HAUL: 'hauling', BUILD: 'building',
-  FARM: 'farming', PLAY: 'playing', LEAD: 'leading',
+  FARM: 'farming', PLAY: 'playing', LEAD: 'leading', FIGHT: 'fighting', FLEE: 'fleeing',
 };
 
 export class Being {
@@ -31,6 +31,7 @@ export class Being {
     this.hunger = rng.range(10, 40);
     this.energy = rng.range(60, 100);
     this.social = rng.range(40, 80);
+    this.health = 100;
 
     // personality trait vector (-1..1)
     this.traits = opts.traits || {
@@ -109,6 +110,9 @@ export class Being {
     // belief decays slowly toward neutrality unless reinforced
     this.godAwareness = Math.max(0, this.godAwareness - 0.02 * dDays);
 
+    // recover health when not actively fighting
+    if (this.action !== ACTION.FIGHT && this.health < 100) this.health = Math.min(100, this.health + COMBAT.HEAL_PER_DAY * dDays);
+
     // curiosity feeds culture insight (children barely contribute)
     const wonder = (0.5 + this.traits.curious * 0.5) * (this.energy / 100);
     const gain = wonder * dDays * 0.5 * (0.5 + this.skills.forage) * (this.stage === 'child' ? 0.2 : 1);
@@ -143,6 +147,18 @@ export class Being {
       this.tx = this.inspiration.x; this.tz = this.inspiration.z;
       this.actTarget = { kind: 'inspire' }; return ACTION.SEEK;
     }
+    // danger: an enemy is near and my people are at war with theirs
+    const enemy = sim.nearestEnemy(this, COMBAT.SIGHT);
+    if (enemy) {
+      if (this.job === 'warrior' || (this.stage === 'adult' && this.traits.brave > 0.4 && this.health > 40)) {
+        this.actTarget = { kind: 'attack', ref: enemy }; this.tx = enemy.x; this.tz = enemy.z; return ACTION.FIGHT;
+      }
+      // civilians flee toward home
+      if (Math.hypot(enemy.x - this.x, enemy.z - this.z) < COMBAT.SIGHT * 0.55) {
+        const h = this.homeHut || (this.tribe ? this.tribe.home : sim.home);
+        this.actTarget = { kind: 'flee' }; this.tx = h.x; this.tz = h.z; return ACTION.FLEE;
+      }
+    }
     // survival overrides
     if (this.hunger > 78) return this._goEat(sim);
     if (this.energy < 16 || night) return this._goSleep(sim);
@@ -175,6 +191,7 @@ export class Being {
       case 'hunter':     return this._goHunt(sim);
       case 'farmer':     return this._goFarm(sim);
       case 'builder':    return this._goBuild(sim);
+      case 'warrior':    return this._goPatrol(sim);
       case 'leader':     return this._goLead(sim);
       case 'forager':
       default:           return this._goGather(sim, sim.nearestBush(this.x, this.z), 'food', ACTION.FORAGE);
@@ -205,6 +222,15 @@ export class Being {
     }
     this.actTarget = { kind: 'build', ref: site };
     this.tx = site.x; this.tz = site.z; return ACTION.BUILD;
+  }
+  _goPatrol(sim) {
+    // warriors hunt down enemies if at war, else guard the village
+    const enemy = sim.nearestEnemy(this, COMBAT.SIGHT * 1.6);
+    if (enemy) { this.actTarget = { kind: 'attack', ref: enemy }; this.tx = enemy.x; this.tz = enemy.z; return ACTION.FIGHT; }
+    const h = this.tribe ? this.tribe.home : sim.home;
+    this.actTarget = { kind: 'wander' };
+    this.tx = h.x + this.rng.range(-12, 12); this.tz = h.z + this.rng.range(-12, 12);
+    return ACTION.LEAD;
   }
   _goLead(sim) {
     // a leader walks the village, lifting spirits and binding the people together
@@ -301,6 +327,26 @@ export class Being {
     } else if (k === 'haul' && reached) {
       if (this.carrying) { sim.deposit(this, this.carrying.type, this.carrying.amount); this.carrying = null; }
       this.actTarget = null; this._think = 0;
+    } else if (k === 'attack') {
+      const foe = this.actTarget.ref;
+      if (!foe || !foe.alive) { this.actTarget = null; this._think = 0; }
+      else {
+        this.tx = foe.x; this.tz = foe.z; // chase
+        if (Math.hypot(foe.x - this.x, foe.z - this.z) < COMBAT.RANGE) {
+          this.action = ACTION.FIGHT;
+          const dmg = COMBAT.DAMAGE * (0.6 + this.skills.craft + Math.max(0, this.build - 1)) * dDays * 6;
+          foe.health -= dmg;
+          this.skills.craft = Math.min(1, this.skills.craft + 0.004);
+          if (foe.health <= 0) {
+            foe.die('slain in battle', sim);
+            if (this.tribe) this.remember('battle', `slew a foe of the ${this.tribe.name}`, 4);
+            this.actTarget = null; this._think = 0;
+          }
+        }
+      }
+    } else if (k === 'flee') {
+      this.action = ACTION.FLEE;
+      if (reached) { this.actTarget = null; this._think = this.rng.range(0.2, 0.4); }
     } else if (k === 'build' && reached) {
       sim.tryBuild(this.actTarget.ref, this);
       this.actTarget = null; this._think = this.rng.range(0.3, 0.6);

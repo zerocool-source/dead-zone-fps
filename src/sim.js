@@ -7,7 +7,7 @@ import { Tribe } from './tribe.js';
 import { Chronicle } from './chronicle.js';
 import { makeName } from './names.js';
 import {
-  DAY_SECONDS, YEAR_DAYS, TIME_SCALES, POP, FOOD, TECH, LIFE, RES, FAUNA, JOBS, RACES, TRIBES,
+  DAY_SECONDS, YEAR_DAYS, TIME_SCALES, POP, FOOD, TECH, LIFE, RES, FAUNA, JOBS, RACES, TRIBES, COMBAT,
 } from './config.js';
 
 export class Sim {
@@ -231,24 +231,28 @@ export class Sim {
       }
     }
     const n = adults.length;
+    const atWar = tribe._wars && tribe._wars.size > 0;
+    const aggr = (tribe.race.trait?.brave || 0) > 0.2;
     const need = {
-      hunter: Math.round(n * 0.18),
-      woodcutter: Math.round(n * 0.16),
-      miner: Math.round(n * 0.12),
-      builder: Math.max(1, Math.round(n * 0.12)),
-      farmer: tribe.tech.includes('farming') ? Math.round(n * 0.2) : 0,
+      warrior: atWar ? Math.max(2, Math.round(n * 0.32)) : Math.round(n * (aggr ? 0.12 : 0.07)),
+      hunter: Math.round(n * 0.16),
+      woodcutter: Math.round(n * 0.15),
+      miner: Math.round(n * 0.11),
+      builder: Math.max(1, Math.round(n * 0.11)),
+      farmer: tribe.tech.includes('farming') ? Math.round(n * 0.18) : 0,
     };
     const leader = adults.find(a => a.id === tribe.leaderId);
     if (leader) leader.job = 'leader';
     const pool = adults.filter(a => a.id !== tribe.leaderId);
     const score = (a, job) => {
+      if (job === 'warrior') return a.traits.brave * 1.4 + (a.build - 1) + a.skills.craft;
       if (job === 'hunter') return a.traits.brave + a.skills.forage;
       if (job === 'woodcutter' || job === 'miner') return (a.build - 1) + a.skills.craft + a.traits.brave * 0.3;
       if (job === 'builder') return a.skills.build + a.skills.craft;
       return a.skills.forage + a.traits.kind * 0.2;
     };
     const taken = new Set();
-    for (const job of ['builder', 'hunter', 'woodcutter', 'miner', 'farmer']) {
+    for (const job of ['warrior', 'builder', 'hunter', 'woodcutter', 'miner', 'farmer']) {
       const want = need[job] || 0;
       const ranked = pool.filter(a => !taken.has(a.id)).sort((x, y) => score(y, job) - score(x, job));
       for (let i = 0; i < want && i < ranked.length; i++) { ranked[i].job = job; taken.add(ranked[i].id); }
@@ -380,6 +384,18 @@ export class Sim {
       d.y = this.world.heightAt(d.x, d.z);
     }
   }
+  atWar(a, b) { return a && b && a !== b && a.standing(b.id) <= COMBAT.WAR_THRESHOLD; }
+  nearestEnemy(b, radius) {
+    if (!b.tribe) return null;
+    let best = null, bd = radius * radius;
+    for (const o of this.beings) {
+      if (!o.alive || !o.tribe || o.tribe === b.tribe) continue;
+      if (!this.atWar(b.tribe, o.tribe)) continue;
+      const dx = o.x - b.x, dz = o.z - b.z, d = dx * dx + dz * dz;
+      if (d < bd) { bd = d; best = o; }
+    }
+    return best;
+  }
   nearestHunter(x, z, radius) {
     let best = null, bd = radius * radius;
     for (const b of this.beings) {
@@ -403,8 +419,29 @@ export class Sim {
   }
 
   _diplomacy() {
-    // standing drifts toward neutral; cross-tribe knowledge & goods leak along borders
-    for (const t of this.tribes) for (const [oid, v] of t.relations) t.relations.set(oid, v * 0.999);
+    const T = this.tribes.filter(t => this.membersOf(t).length > 0);
+    for (let i = 0; i < T.length; i++) {
+      for (let j = i + 1; j < T.length; j++) {
+        const a = T[i], b = T[j];
+        a._wars = a._wars || new Set(); b._wars = b._wars || new Set();
+        const dist = Math.hypot(a.home.x - b.home.x, a.home.z - b.home.z);
+        const near = dist < this.world.size * 0.5;
+        const aggr = (a.race.trait?.brave || 0) + (b.race.trait?.brave || 0);
+        const scarce = (a.res.food < 14 ? 0.5 : 0) + (b.res.food < 14 ? 0.5 : 0);
+        // tension rises with aggression, hunger, and proximity; eases with distance & time
+        let drift = 0.18 - (near ? aggr * 0.45 + scarce * 0.35 : 0) + (near ? 0 : 0.15);
+        drift += this.rng.gauss(0, 0.22);
+        a.adjustStanding(b.id, drift); b.adjustStanding(a.id, drift);
+        const s = a.standing(b.id);
+        if (s <= COMBAT.WAR_THRESHOLD && !a._wars.has(b.id)) {
+          a._wars.add(b.id); b._wars.add(a.id);
+          this.chronicle.add(this.day, this.year, '⚔️', `War breaks out between the ${a.name} and the ${b.name}!`, 'war');
+        } else if (s > COMBAT.PEACE_THRESHOLD && a._wars.has(b.id)) {
+          a._wars.delete(b.id); b._wars.delete(a.id);
+          this.chronicle.add(this.day, this.year, '🕊️', `The ${a.name} and the ${b.name} lay down their arms.`, 'gov');
+        }
+      }
+    }
   }
 
   _faithTick() {}
