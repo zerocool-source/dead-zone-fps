@@ -449,7 +449,7 @@ export class Renderer {
     const stageScale = (key === 'being' || key === 'woman')
       ? (b.stage === 'child' ? 0.62 : b.stage === 'elder' ? 0.9 : 1) : 1;
     const scale = stageScale * b.build;
-    let body, bodyH;
+    let body, bodyH, outMixer = null, outWalk = null;
     if (key) {
       // generated GLB character; tint slightly per-lineage so families read apart
       body = this.assets.clone(key);
@@ -463,6 +463,14 @@ export class Renderer {
       });
       bodyH = (this.assets.assets[key].height) * scale;
       g.add(body);
+      // rigged walk cycle: play the clip, weighted in only while the being moves
+      if (this.assets.isAnimated(key)) {
+        const clip = this.assets.clips(key)[0];
+        outMixer = new THREE.AnimationMixer(body);
+        outWalk = outMixer.clipAction(clip);
+        outWalk.play(); outWalk.setEffectiveWeight(0);
+        outWalk.timeScale = 1.2;
+      }
     } else {
       const col = new THREE.Color().setHSL(b.hue, 0.55, 0.55);
       bodyH = (b.stage === 'child' ? 0.7 : 1.2);
@@ -493,7 +501,7 @@ export class Renderer {
     bubble.renderOrder = 998;
     g.add(bubble);
     const bodyBaseY = key ? 0 : (bodyH / 2 + 0.3);
-    g.userData = { being: b, body, halo, bodyH, bodyBaseY, bubble, bubbleKey: 'wandering', modelKey: key };
+    g.userData = { being: b, body, halo, bodyH, bodyBaseY, bubble, bubbleKey: 'wandering', modelKey: key, mixer: outMixer, walk: outWalk };
     this.scene.add(g);
     return g;
   }
@@ -512,8 +520,14 @@ export class Renderer {
       g.position.set(b.x, b.y, b.z);
       g.rotation.y = -b.heading + Math.PI / 2 || 0;
       g.userData.halo.material.opacity = Math.min(0.85, b.godAwareness);
-      // walk bob
-      g.userData.body.position.y = g.userData.bodyBaseY + (b.moving ? Math.abs(Math.sin(performance.now() * 0.011 + b.id)) * 0.08 : 0);
+      // locomotion: real rig walk if animated, else a simple bob
+      if (g.userData.mixer) {
+        g.userData.mixer.update(this._dt || 0.016);
+        g.userData.walk.setEffectiveWeight(b.moving ? 1 : 0);
+        g.userData.body.position.y = g.userData.bodyBaseY;
+      } else {
+        g.userData.body.position.y = g.userData.bodyBaseY + (b.moving ? Math.abs(Math.sin(performance.now() * 0.011 + b.id)) * 0.08 : 0);
+      }
       // thought bubble (LOD: hide when far to keep the view clean)
       const key = this._bubbleKey(b);
       if (key !== g.userData.bubbleKey) { g.userData.bubble.material = this.bubbleMats[key]; g.userData.bubbleKey = key; }
@@ -575,6 +589,7 @@ export class Renderer {
   }
 
   update(dt) {
+    this._dt = dt;
     this.syncBeings();
     this.syncFauna();
     this.updateStructures();

@@ -3,6 +3,7 @@
 // load, the renderer falls back to its procedural primitive, so the game never breaks.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 
 // target heights (world units) each asset is normalized to, with base sitting at y=0
 const MANIFEST = {
@@ -39,12 +40,15 @@ export class AssetStore {
   }
 
   has(key) { return !!this.assets[key]; }
+  isAnimated(key) { const a = this.assets[key]; return !!(a && a.clips && a.clips.length); }
+  clips(key) { const a = this.assets[key]; return a ? a.clips : null; }
 
-  // returns a fresh, placeable clone (group whose origin is base-center)
+  // returns a fresh, placeable clone (group whose origin is base-center).
+  // skinned/animated assets must be cloned with SkeletonUtils so the rig survives.
   clone(key) {
     const a = this.assets[key];
     if (!a) return null;
-    return a.proto.clone(true);
+    return (a.clips && a.clips.length) ? skeletonClone(a.proto) : a.proto.clone(true);
   }
 
   // representative { geometry, material } for InstancedMesh use (trees/bushes/rocks)
@@ -56,15 +60,17 @@ export class AssetStore {
   _process(gltf, info) {
     const root = gltf.scene;
     root.updateWorldMatrix(true, true);
+    const clips = gltf.animations || [];
+    const animated = clips.length > 0;
 
     // ---- normalized clone prototype (base at y=0, centered in x/z) ----
     const box0 = new THREE.Box3().setFromObject(root);
     const size0 = box0.getSize(new THREE.Vector3());
     const scale = info.height / (size0.y || 1);
 
-    const proto = root.clone(true);
+    const proto = animated ? skeletonClone(root) : root.clone(true);
     proto.scale.setScalar(scale);
-    proto.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; } });
+    proto.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; o.frustumCulled = false; } });
     const box1 = new THREE.Box3().setFromObject(proto);
     const c = box1.getCenter(new THREE.Vector3());
     proto.position.set(-c.x, -box1.min.y, -c.z);
@@ -81,7 +87,7 @@ export class AssetStore {
       }
     });
     let inst = null;
-    if (rep) {
+    if (rep && !animated) {
       const geo = rep.geometry.clone();
       rep.updateWorldMatrix(true, false);
       geo.applyMatrix4(rep.matrixWorld);
@@ -92,6 +98,6 @@ export class AssetStore {
       geo.computeVertexNormals();
       inst = { geometry: geo, material: Array.isArray(rep.material) ? rep.material[0] : rep.material };
     }
-    return { proto: wrap, inst, height: info.height };
+    return { proto: wrap, inst, clips, height: info.height };
   }
 }
