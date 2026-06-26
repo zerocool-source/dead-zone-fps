@@ -20,6 +20,9 @@ const keys = new Set();
 
 // expose for debugging / console tinkering
 window.AEON = { sim, god, renderer, hud };
+// Plug in real Claude dialogue: window.AEON.setLLM(async ({being, context, prompt}) => "<line>")
+// Promoted beings (leaders, the possessed one) will then speak LLM-generated lines.
+window.AEON.setLLM = (fn) => sim.voices.setLLM(fn);
 
 // ---------- boot ----------
 async function boot() {

@@ -325,6 +325,6 @@ export class HUD {
     ).join('');
   }
   _chronColor(kind) {
-    return { god: '#e8c87a', tech: '#7fae6a', death: '#b5705a', epoch: '#c9a86a', birth: '#9ab5d0', war: '#d0594a', gov: '#e8c87a' }[kind] || 'var(--text)';
+    return { god: '#e8c87a', tech: '#7fae6a', death: '#b5705a', epoch: '#c9a86a', birth: '#9ab5d0', war: '#d0594a', gov: '#e8c87a', speech: '#a9c6e0' }[kind] || 'var(--text)';
   }
 }

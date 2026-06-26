@@ -131,6 +131,48 @@ export class Renderer {
     this.scene.add(this.labelSprite);
     this._labelFor = null;
   }
+  // ---- speech bubbles: a being's spoken line floats above them briefly ----
+  _speechTexture(text) {
+    const words = text.split(' '); const lines = []; let line = '';
+    for (const w of words) { if ((line + ' ' + w).trim().length > 24) { lines.push(line.trim()); line = w; } else line += ' ' + w; }
+    if (line.trim()) lines.push(line.trim());
+    const c = document.createElement('canvas'); const ctx = c.getContext('2d');
+    const W = 340, H = 30 + lines.length * 34; c.width = W; c.height = H;
+    ctx.font = '600 27px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(12,14,20,0.86)';
+    if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(6, 4, W - 12, H - 14, 12); ctx.fill(); }
+    else ctx.fillRect(6, 4, W - 12, H - 14);
+    ctx.strokeStyle = 'rgba(232,200,122,0.4)'; ctx.lineWidth = 2; if (ctx.roundRect) ctx.stroke();
+    ctx.fillStyle = '#eef0f6';
+    lines.forEach((l, i) => ctx.fillText(l, W / 2, 22 + i * 34));
+    const tex = new THREE.CanvasTexture(c); tex.minFilter = THREE.LinearFilter;
+    return { tex, aspect: W / H };
+  }
+  _updateSpeech(dt) {
+    if (!this.speeches) this.speeches = new Map();
+    for (const b of this.sim.beings) {
+      if (!b._say || !b._sayId) continue;
+      const g = this.beingMeshes.get(b.id); if (!g) continue;
+      if (this.camera.position.distanceTo(g.position) > 150) continue;
+      const e = this.speeches.get(b.id);
+      if (!e || e.sayId !== b._sayId) {
+        if (e) { this.scene.remove(e.sprite); if (e.sprite.material.map) e.sprite.material.map.dispose(); }
+        const { tex, aspect } = this._speechTexture(b._say);
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+        const w = 6.5; sp.scale.set(w, w / aspect, 1); sp.renderOrder = 1000;
+        this.scene.add(sp);
+        this.speeches.set(b.id, { sprite: sp, ttl: 4.5, sayId: b._sayId });
+      }
+    }
+    for (const [id, e] of this.speeches) {
+      e.ttl -= dt;
+      const g = this.beingMeshes.get(id);
+      if (e.ttl <= 0 || !g) { this.scene.remove(e.sprite); if (e.sprite.material.map) e.sprite.material.map.dispose(); this.speeches.delete(id); continue; }
+      e.sprite.position.set(g.position.x, g.position.y + (g.userData.bodyH || 1.6) + 3.1, g.position.z);
+      e.sprite.material.opacity = e.ttl < 1 ? e.ttl : (e.ttl > 3.5 ? 4.5 - e.ttl : 1);
+    }
+  }
+
   _setLabel(b) {
     if (!b) { this.labelSprite.visible = false; this._labelFor = null; return; }
     const text = b.name;
@@ -633,6 +675,7 @@ export class Renderer {
       const p = this.possessed;
       this.controls.target.lerp(this.tmp.set(p.x, p.y + 1.2, p.z), 0.15);
     }
+    this._updateSpeech(dt);
     this._updateEffects(dt);
     this._updateSky();
     this.controls.update();

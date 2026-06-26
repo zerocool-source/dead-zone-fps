@@ -4,6 +4,7 @@ import { RNG, hashStringToSeed } from './rng.js';
 import { World } from './world.js';
 import { Being } from './being.js';
 import { Tribe } from './tribe.js';
+import { Soul, Voices } from './soul.js';
 import { Chronicle } from './chronicle.js';
 import { makeName } from './names.js';
 import {
@@ -28,6 +29,7 @@ export class Sim {
     this.DEER_FOOD = FAUNA.DEER_FOOD;
     this.FAUNA_RESPAWN = FAUNA.RESPAWN_DAYS;
     this._jobTimer = 0;
+    this.voices = new Voices(this);
 
     this._seedTribes();
     this._seedFauna();
@@ -133,7 +135,39 @@ export class Sim {
       this._govTimer = 1.6;
       for (const t of this.tribes) this._govern(t);
     }
+    this._voiceTimer = (this._voiceTimer || 0) - total;
+    if (this._voiceTimer <= 0) {
+      this._voiceTimer = 0.5;
+      this._voicesPass();
+    }
     return total;
+  }
+
+  // route a being's speech through the Soul generator (+ optional LLM for promoted)
+  voice(b, ctx, opts = {}) {
+    if (!b || !b.alive) return;
+    const text = Soul.speak(b, ctx, this, opts);
+    if (!text) return;
+    const promoted = (b.tribe && b.id === b.tribe.leaderId) || b.promoted;
+    this.voices.say(b, text, { ...opts, promoted, context: ctx });
+  }
+
+  _voicesPass() {
+    // leaders muse or pray; a handful of folk murmur about their day
+    for (const t of this.tribes) {
+      const leader = this.beings.find(b => b.id === t.leaderId);
+      if (leader && this.rng.chance(0.5)) {
+        this.voice(leader, (leader.godAwareness > 0.4 && this.rng.chance(0.4)) ? 'pray' : 'idle');
+      }
+    }
+    const workActs = ['chopping wood', 'mining stone', 'hunting', 'foraging', 'building', 'farming'];
+    const n = this.rng.int(2, 5);
+    for (let i = 0; i < n; i++) {
+      const b = this.beings[this.rng.int(0, this.beings.length - 1)];
+      if (b && b.stage === 'adult' && this.rng.chance(0.6)) {
+        this.voice(b, workActs.includes(b.action) ? 'work' : (b.godAwareness > 0.5 && this.rng.chance(0.25) ? 'pray' : 'idle'));
+      }
+    }
   }
 
   _onYear() {
@@ -353,9 +387,13 @@ export class Sim {
   onDeath(b, cause) {
     this.deaths++;
     this.dead.push({ name: b.name, year: this.year, cause, age: Math.floor(b.age) });
+    let mournerSpoke = false;
     for (const o of this.beings) {
       if (o === b) continue;
-      if (o.bondTo(b.id) > 20) { o.remember('loss', `mourned ${b.name}`, 3); o.social = Math.max(0, o.social - 20); }
+      if (o.bondTo(b.id) > 20) {
+        o.remember('loss', `mourned ${b.name}`, 3); o.social = Math.max(0, o.social - 20);
+        if (!mournerSpoke && this.rng.chance(0.5)) { this.voice(o, 'mourn', { who: b.name }); mournerSpoke = true; }
+      }
     }
     const tribe = b.tribe;
     if (!tribe || this.membersOf(tribe).length <= 40 || b.godAwareness > 0.4 || this.rng.chance(0.2)) {
@@ -415,6 +453,7 @@ export class Sim {
 
   // ---- culture & diplomacy ----
   onConverse(a, b) {
+    if (this.rng.chance(0.22)) this.voice(a, a.tribe === b.tribe ? 'gossip' : 'greet', { other: b });
     if (a.tribe === b.tribe) {
       if (a.insight > b.insight) { const d = (a.insight - b.insight) * 0.02; b.insight += d; a.tribe.insight += d; }
     } else if (a.tribe && b.tribe) {
@@ -443,6 +482,8 @@ export class Sim {
         if (s <= COMBAT.WAR_THRESHOLD && !a._wars.has(b.id)) {
           a._wars.add(b.id); b._wars.add(a.id);
           this.chronicle.add(this.day, this.year, '⚔️', `War breaks out between the ${a.name} and the ${b.name}!`, 'war');
+          const la = this.beings.find(x => x.id === a.leaderId);
+          if (la) this.voice(la, 'war', { enemy: b.name });
         } else if (s > COMBAT.PEACE_THRESHOLD && a._wars.has(b.id)) {
           a._wars.delete(b.id); b._wars.delete(a.id);
           this.chronicle.add(this.day, this.year, '🕊️', `The ${a.name} and the ${b.name} lay down their arms.`, 'gov');
@@ -489,6 +530,8 @@ export class Sim {
 
     const choice = this.rng.pick(decisions);
     tribe._focus = (choice === 'food' || choice === 'build' || choice === 'war') ? choice : null;
+    // the leader speaks their reasoning aloud
+    this.voices.say(leader, Soul.decree(leader, choice, this, { enemy: rival && rival.name, ally: ally && ally.name }), { promoted: true, context: 'decision' });
     const who = leader.name;
     switch (choice) {
       case 'food':

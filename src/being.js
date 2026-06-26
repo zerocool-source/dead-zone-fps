@@ -156,6 +156,7 @@ export class Being {
       // civilians flee toward home
       if (Math.hypot(enemy.x - this.x, enemy.z - this.z) < COMBAT.SIGHT * 0.55) {
         const h = this.homeHut || (this.tribe ? this.tribe.home : sim.home);
+        if (this.rng.chance(0.12)) sim.voice(this, 'afraid');
         this.actTarget = { kind: 'flee' }; this.tx = h.x; this.tz = h.z; return ACTION.FLEE;
       }
     }
@@ -336,6 +337,7 @@ export class Being {
           this.action = ACTION.FIGHT;
           const dmg = COMBAT.DAMAGE * (0.6 + this.skills.craft + Math.max(0, this.build - 1)) * dDays * 6;
           foe.health -= dmg;
+          if (this.rng.chance(0.03)) sim.voice(this, 'war', { enemy: foe.tribe ? foe.tribe.name : '' });
           this.skills.craft = Math.min(1, this.skills.craft + 0.004);
           if (foe.health <= 0) {
             foe.die('slain in battle', sim);
