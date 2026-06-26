@@ -1,0 +1,7 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <rect width="128" height="128" rx="20" fill="#0c0e14"/>
+  <circle cx="64" cy="66" r="34" fill="#2e5a36"/>
+  <circle cx="64" cy="66" r="34" fill="none" stroke="#1b4a6b" stroke-width="6"/>
+  <circle cx="64" cy="30" r="9" fill="#e8c87a"/>
+  <text x="64" y="112" font-family="serif" font-size="18" fill="#e8c87a" text-anchor="middle" letter-spacing="3">AEON</text>
+</svg>
