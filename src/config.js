@@ -1,12 +1,23 @@
 // AEON — global tuning constants. One place to balance the whole sim.
 
 export const WORLD = {
-  SIZE: 200,          // world units across (square island)
-  SEG: 160,           // terrain grid resolution
+  SIZE: 320,          // world units across (a bigger continent)
+  SEG: 200,           // terrain grid resolution
   SEA_LEVEL: 0.0,     // height at/below this is ocean
-  MAX_HEIGHT: 16,     // peak mountain height in world units
-  ISLAND_FALLOFF: 1.5,// how hard the coast drops to sea
+  MAX_HEIGHT: 20,     // peak mountain height in world units
+  ISLAND_FALLOFF: 1.35,// how hard the coast drops to sea
 };
+
+// Playable peoples. `mesh` maps to an asset key (falls back to 'being'); hue tints them,
+// build scales their size. Each tribe is seeded as one of these races.
+export const RACES = {
+  dawnfolk:  { name: 'Dawnfolk',  mesh: 'being', hue: 0.07, build: 1.00, biome: 'grass',  trait: { kind: 0.3 } },
+  emberfolk: { name: 'Emberfolk', mesh: 'ember', hue: 0.03, build: 0.94, biome: 'beach',  trait: { brave: 0.4 } },
+  frostborn: { name: 'Frostborn', mesh: 'frost', hue: 0.60, build: 1.14, biome: 'rock',   trait: { brave: 0.25, social: -0.1 } },
+  thornkin:  { name: 'Thornkin',  mesh: 'thorn', hue: 0.32, build: 1.05, biome: 'forest', trait: { curious: 0.4 } },
+};
+
+export const TRIBES = { COUNT: 3, START_POP: 9 };
 
 // One in-game DAY = this many real seconds at 1x speed (slowed for day-to-day life).
 export const DAY_SECONDS = 34;
@@ -42,7 +53,7 @@ export const JOBS = ['forager', 'hunter', 'woodcutter', 'miner', 'builder', 'far
 
 // fauna for hunting
 export const FAUNA = {
-  DEER_COUNT: 16,
+  DEER_COUNT: 34,
   DEER_FOOD: 14,        // food yield when caught
   DEER_HIDE: 1,
   FLEE_RADIUS: 14,
@@ -63,11 +74,11 @@ export const LIFE = {
 
 export const POP = {
   START: 14,
-  SOFT_CAP: 60,        // food/space pressure scales above this
+  SOFT_CAP: 70,        // per-tribe soft cap; food/space pressure scales above this
 };
 
 export const FOOD = {
-  BUSH_COUNT: 70,
+  BUSH_COUNT: 150,
   BUSH_MAX: 5,         // berries per bush
   REGROW_DAYS: 2.5,    // days to regrow one berry
 };

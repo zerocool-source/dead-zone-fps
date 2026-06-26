@@ -147,17 +147,21 @@ export class Renderer {
 
   // ---- the village physically grows as the tribe discovers things ----
   updateStructures() {
-    const tech = this.sim.tech, home = this.sim.home;
-    if (tech.includes('fire') && !this.campfire) this._buildCampfire(home);
-    // huts are built by the tribe's builders — render one mesh per sim hut
-    while (this.huts.length < this.sim.huts.length) {
-      this._addHutMesh(this.sim.huts[this.huts.length], this.huts.length);
+    if (!this.campfires) this.campfires = [];
+    for (const tribe of this.sim.tribes) {
+      if (tribe.tech.includes('fire') && !tribe._campfire) this._buildCampfire(tribe);
+      // huts are built by the tribe's builders — render one mesh per built hut
+      tribe._hutCount = tribe._hutCount || 0;
+      while (tribe._hutCount < tribe.huts.length) {
+        this._addHutMesh(tribe.huts[tribe._hutCount], tribe._hutCount, tribe);
+        tribe._hutCount++;
+      }
+      if (tribe.tech.includes('ritual') && !tribe._totem) this._buildTotem(tribe);
+      if (tribe.farms.length && !tribe._farms) this._buildFarmsForTribe(tribe);
     }
-    if (tech.includes('ritual') && !this.totem) this._buildTotem(home);
-    // farm patches follow sim.farms
-    if (this.sim.farms.length && !this.farms) this._buildFarmsFromSim();
   }
-  _buildCampfire(home) {
+  _buildCampfire(tribe) {
+    const home = tribe.home;
     const g = new THREE.Group();
     if (this._has('campfire')) {
       g.add(this.assets.clone('campfire'));
@@ -172,7 +176,8 @@ export class Renderer {
     const light = new THREE.PointLight(0xff7a2a, 0, 26, 2); light.position.y = 1.2; g.add(light);
     g.position.set(home.x, this.sim.world.heightAt(home.x, home.z), home.z);
     this.structGroup.add(g);
-    this.campfire = { group: g, flame: g.userData.flame || null, light };
+    tribe._campfire = { group: g, flame: g.userData.flame || null, light };
+    this.campfires.push(tribe._campfire);
   }
   _addHutMesh(hut, i) {
     const x = hut.x, z = hut.z, y = hut.y;
@@ -194,8 +199,8 @@ export class Renderer {
     this.structGroup.add(g);
     this.huts.push(g);
   }
-  _buildTotem(home) {
-    const x = home.x + 3.5, z = home.z + 3.5, y = this.sim.world.heightAt(x, z);
+  _buildTotem(tribe) {
+    const x = tribe.home.x + 3.5, z = tribe.home.z + 3.5, y = this.sim.world.heightAt(x, z);
     const g = new THREE.Group();
     if (this._has('totem')) g.add(this.assets.clone('totem'));
     else {
@@ -205,7 +210,7 @@ export class Renderer {
     }
     g.position.set(x, y, z);
     this.structGroup.add(g);
-    this.totem = g;
+    tribe._totem = g;
   }
   _scatterRocks() {
     if (!this._has('rock')) return;
@@ -222,15 +227,16 @@ export class Renderer {
     });
     this.scene.add(rocks);
   }
-  _buildFarmsFromSim() {
-    this.farms = new THREE.Group();
+  _buildFarmsForTribe(tribe) {
+    const grp = new THREE.Group();
     const mat = new THREE.MeshStandardMaterial({ color: 0x6a5a2a, roughness: 1 });
-    for (const f of this.sim.farms) {
+    for (const f of tribe.farms) {
       const patch = new THREE.Mesh(new THREE.BoxGeometry(4, 0.15, 4), mat);
       patch.position.set(f.x, f.y + 0.1, f.z);
-      this.farms.add(patch);
+      grp.add(patch);
     }
-    this.structGroup.add(this.farms);
+    this.structGroup.add(grp);
+    tribe._farms = grp;
   }
 
   // ---- deer (fauna) ----
@@ -424,12 +430,15 @@ export class Renderer {
     this.scene.add(ring);
   }
 
-  // which character model fits this being's sex + life stage (falls back to 'being')
+  // which character model fits this being's race + sex + life stage (falls back to 'being')
   _beingKey(b) {
-    let key = 'being';
+    let key;
     if (b.stage === 'child') key = 'child';
     else if (b.stage === 'elder') key = 'elder';
-    else if (b.sex === 'f') key = 'woman';
+    else {
+      const raceMesh = (b.tribe && b.tribe.race) ? b.tribe.race.mesh : 'being';
+      key = raceMesh !== 'being' ? raceMesh : (b.sex === 'f' ? 'woman' : 'being');
+    }
     return this._has(key) ? key : (this._has('being') ? 'being' : null);
   }
 
@@ -572,14 +581,16 @@ export class Renderer {
     // bush berry visibility
     for (const g of this.bushMeshes) g.userData.berry.visible = g.userData.bush.berries > 0;
 
-    // campfire flicker, brighter at night
-    if (this.campfire) {
+    // campfire flicker, brighter at night (one per tribe)
+    if (this.campfires) {
       const night = 1 - this._elev;
       const f = 0.7 + 0.3 * Math.sin(performance.now() * 0.02) + 0.15 * Math.sin(performance.now() * 0.057);
-      this.campfire.light.intensity = (1.2 + night * 2.6) * f;
-      if (this.campfire.flame) {
-        this.campfire.flame.scale.y = 0.85 + 0.3 * f;
-        this.campfire.flame.material.opacity = 0.8 + 0.2 * Math.sin(performance.now() * 0.03);
+      for (const c of this.campfires) {
+        c.light.intensity = (1.2 + night * 2.6) * f;
+        if (c.flame) {
+          c.flame.scale.y = 0.85 + 0.3 * f;
+          c.flame.material.opacity = 0.8 + 0.2 * Math.sin(performance.now() * 0.03);
+        }
       }
     }
 

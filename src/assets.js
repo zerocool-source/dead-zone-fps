@@ -6,10 +6,13 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 // target heights (world units) each asset is normalized to, with base sitting at y=0
 const MANIFEST = {
-  being:    { file: 'being.glb',    height: 1.9 }, // adult male (also generic fallback)
+  being:    { file: 'being.glb',    height: 1.9 }, // dawnfolk adult male (also generic fallback)
   woman:    { file: 'woman.glb',    height: 1.8 },
   child:    { file: 'child.glb',    height: 1.1 },
   elder:    { file: 'elder.glb',    height: 1.75 },
+  ember:    { file: 'ember.glb',    height: 1.9 }, // Emberfolk
+  frost:    { file: 'frost.glb',    height: 1.95 }, // Frostborn
+  thorn:    { file: 'thorn.glb',    height: 2.0 }, // Thornkin
   hut:      { file: 'hut.glb',      height: 2.8 },
   tree:     { file: 'tree.glb',     height: 4.0 },
   bush:     { file: 'bush.glb',     height: 1.1 },

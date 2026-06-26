@@ -113,7 +113,7 @@ export class Being {
     const wonder = (0.5 + this.traits.curious * 0.5) * (this.energy / 100);
     const gain = wonder * dDays * 0.5 * (0.5 + this.skills.forage) * (this.stage === 'child' ? 0.2 : 1);
     this.insight += gain;
-    sim.addInsight(gain);
+    sim.addInsight(this, gain);
 
     if (this.inspiration) { this.inspiration.ttl -= dDays; if (this.inspiration.ttl <= 0) this.inspiration = null; }
 
@@ -193,13 +193,13 @@ export class Being {
     this.tx = deer.x; this.tz = deer.z; return ACTION.HUNT;
   }
   _goFarm(sim) {
-    const plot = sim.nearestFarm(this.x, this.z);
+    const plot = this.tribe ? sim.nearestFarm(this.tribe, this.x, this.z) : null;
     if (!plot) return this._goGather(sim, sim.nearestBush(this.x, this.z), 'food', ACTION.FORAGE);
     this.actTarget = { kind: 'gather', ref: plot, type: 'food' };
     this.tx = plot.x; this.tz = plot.z; return ACTION.FARM;
   }
   _goBuild(sim) {
-    const site = sim.buildSite();
+    const site = sim.buildSite(this.tribe);
     if (!site) { // nothing to build → help cut wood
       return this._goGather(sim, sim.nearestTree(this.x, this.z), 'wood', ACTION.CHOP);
     }
@@ -214,12 +214,12 @@ export class Being {
     return ACTION.LEAD;
   }
   _goHaul(sim) {
-    const s = sim.storePos();
+    const s = sim.storePos(this);
     this.actTarget = { kind: 'haul' }; this.tx = s.x; this.tz = s.z; return ACTION.HAUL;
   }
   _goEat(sim) {
-    if (sim.res.food >= RES.EAT_FROM_STORE) {
-      const s = sim.storePos();
+    if (this.tribe && this.tribe.res.food >= RES.EAT_FROM_STORE) {
+      const s = sim.storePos(this);
       this.actTarget = { kind: 'eatstore' }; this.tx = s.x; this.tz = s.z; return ACTION.EAT;
     }
     const bush = sim.nearestBush(this.x, this.z);
@@ -293,21 +293,20 @@ export class Being {
         if (ok) {
           deer.alive = false; deer.respawn = sim.FAUNA_RESPAWN;
           this.carrying = { type: 'food', amount: sim.DEER_FOOD };
-          sim.res.wood += 0; // hides could be tracked later
           this._skillUp('hunter');
-          if (this.rng.chance(0.4)) this.remember('hunt', `brought down a deer for the ${sim.tribeName}`, 2);
+          if (this.rng.chance(0.4)) this.remember('hunt', `brought down a deer for the ${this.tribe ? this.tribe.name : 'tribe'}`, 2);
         }
       }
       this.actTarget = null; this._think = 0;
     } else if (k === 'haul' && reached) {
-      if (this.carrying) { sim.deposit(this.carrying.type, this.carrying.amount); this.carrying = null; }
+      if (this.carrying) { sim.deposit(this, this.carrying.type, this.carrying.amount); this.carrying = null; }
       this.actTarget = null; this._think = 0;
     } else if (k === 'build' && reached) {
       sim.tryBuild(this.actTarget.ref, this);
       this.actTarget = null; this._think = this.rng.range(0.3, 0.6);
     } else if (k === 'eatstore' && reached) {
-      if (sim.res.food >= RES.EAT_FROM_STORE) {
-        sim.res.food -= RES.EAT_FROM_STORE;
+      if (this.tribe && this.tribe.res.food >= RES.EAT_FROM_STORE) {
+        this.tribe.res.food -= RES.EAT_FROM_STORE;
         this.hunger = Math.max(0, this.hunger - NEEDS.EAT_GAIN);
         this.action = ACTION.EAT;
       }
@@ -341,7 +340,7 @@ export class Being {
       if (m.alive && m.fertile && this.fertile) sim.tryConceive(this, m);
       this.actTarget = null; this._think = this.rng.range(0.4, 0.8);
     } else if (k === 'inspire' && reached) {
-      this.insight += 3; sim.addInsight(3);
+      this.insight += 3; sim.addInsight(this, 3);
       this.godAwareness = Math.min(1, this.godAwareness + 0.18);
       this.godMood = Math.min(1, this.godMood + 0.1);
       this.trust = Math.min(1, this.trust + 0.05);

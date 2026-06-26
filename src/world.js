@@ -161,11 +161,27 @@ export class World {
   // a reasonable spawn cluster: pick a grassy lowland near water
   spawnPoint(rng) {
     for (let i = 0; i < 400; i++) {
-      const x = rng.range(-this.size * 0.3, this.size * 0.3);
-      const z = rng.range(-this.size * 0.3, this.size * 0.3);
+      const x = rng.range(-this.size * 0.34, this.size * 0.34);
+      const z = rng.range(-this.size * 0.34, this.size * 0.34);
       const h = this.heightAt(x, z);
       if (h > 0.4 && h < 4) return { x, z };
     }
     return { x: 0, z: 0 };
+  }
+
+  // find a habitable spot favouring a race's preferred biome, away from `avoid` points
+  spawnInBiome(rng, biomeName, avoid = [], minDist = 70) {
+    const want = { grass: BIOME.GRASS, beach: BIOME.BEACH, forest: BIOME.FOREST, rock: BIOME.ROCK }[biomeName];
+    let fallback = null;
+    for (let i = 0; i < 1200; i++) {
+      const x = rng.range(-this.size * 0.4, this.size * 0.4);
+      const z = rng.range(-this.size * 0.4, this.size * 0.4);
+      const h = this.heightAt(x, z);
+      if (h <= 0.35 || h > 7) continue;                  // habitable land only
+      if (avoid.some(p => Math.hypot(p.x - x, p.z - z) < minDist)) continue;
+      if (!fallback) fallback = { x, z };
+      if (this.biomeAt(x, z) === want) return { x, z };
+    }
+    return fallback || this.spawnPoint(rng);
   }
 }

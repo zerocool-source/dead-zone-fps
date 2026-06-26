@@ -126,8 +126,30 @@ export class HUD {
     this.posBanner.style.cssText += 'position:absolute;bottom:54px;left:50%;transform:translateX(-50%);padding:8px 16px;display:none;align-items:center;gap:12px;';
     root.appendChild(this.posBanner);
 
+    // tribes overview (left, below the power palette)
+    this.tribesPanel = this._el('div', 'panel pointer');
+    this.tribesPanel.style.cssText += 'position:absolute;left:14px;bottom:14px;width:170px;padding:8px 10px;';
+    this.tribesPanel.innerHTML = `<div style="color:var(--gold-dim);font-size:10px;letter-spacing:2px;margin-bottom:5px;">PEOPLES</div><div id="tribes-list"></div>`;
+    root.appendChild(this.tribesPanel);
+    this.elTribes = this.tribesPanel.querySelector('#tribes-list');
+
     this.setTool('inspect');
     this._renderChron();
+  }
+
+  _renderTribes() {
+    if (!this.elTribes) return;
+    const s = this.sim;
+    this.elTribes.innerHTML = s.tribes.map(t => {
+      const pop = s.membersOf(t).length;
+      const col = `hsl(${Math.round(t.color * 360)},55%,62%)`;
+      const era = t.tech.length >= 6 ? 'Farming' : t.tech.length >= 4 ? 'Language' : t.tech.length >= 1 ? 'Fire' : 'Stone';
+      return `<div style="display:flex;align-items:center;gap:6px;margin:3px 0;font-size:11px;">
+        <span style="width:9px;height:9px;border-radius:50%;background:${col};flex:none;"></span>
+        <span style="flex:1;color:var(--text);">${t.name}</span>
+        <span style="color:var(--text-dim);">${pop}</span></div>
+        <div style="font-size:9px;color:var(--text-dim);margin:-1px 0 3px 15px;">${t.race.name} · ${era}${pop === 0 ? ' · ✝' : ''}</div>`;
+    }).join('');
   }
 
   setTool(id) {
@@ -151,11 +173,13 @@ export class HUD {
     this.elYear.textContent = `Year ${s.year}`;
     this.elSpeed.textContent = TIME_LABELS[s.speedIndex].replace(/^[^ ]+ /, '') || 'Paused';
     this.elPop.textContent = s.population;
-    if (this.elFood) {
-      this.elFood.textContent = Math.floor(s.res.food);
-      this.elWood.textContent = Math.floor(s.res.wood);
-      this.elStone.textContent = Math.floor(s.res.stone);
+    const ft = (this.selected && this.selected.tribe) || s.tribes[0];
+    if (this.elFood && ft) {
+      this.elFood.textContent = Math.floor(ft.res.food);
+      this.elWood.textContent = Math.floor(ft.res.wood);
+      this.elStone.textContent = Math.floor(ft.res.stone);
     }
+    this._renderTribes();
     this.speedBtns.forEach((b, i) => {
       const on = i === s.speedIndex;
       b.style.background = on ? 'rgba(232,200,122,0.18)' : 'none';
@@ -233,7 +257,8 @@ export class HUD {
           <span style="color:${stageColor};font-size:11px;">${b.stage} · ${Math.floor(b.age)}y · ${b.sex === 'f' ? '♀' : '♂'}</span>
         </div>
         <div style="color:var(--text-dim);font-size:11px;margin-top:2px;">${this._actionVerb(b)}</div>
-        ${b.job ? `<div style="margin-top:5px;display:inline-block;font-size:10px;letter-spacing:1px;color:#0c0e14;background:${b.id===s.leaderId?'#e8c87a':'var(--gold-dim)'};padding:2px 7px;border-radius:3px;">${b.id===s.leaderId?'👑 LEADER':b.job.toUpperCase()}</div>` : ''}
+        ${b.tribe ? `<div style="margin-top:3px;font-size:10px;color:var(--gold-dim);">${b.tribe.name} · ${b.tribe.race.name}</div>` : ''}
+        ${b.job ? `<div style="margin-top:5px;display:inline-block;font-size:10px;letter-spacing:1px;color:#0c0e14;background:${(b.tribe&&b.id===b.tribe.leaderId)?'#e8c87a':'var(--gold-dim)'};padding:2px 7px;border-radius:3px;">${(b.tribe&&b.id===b.tribe.leaderId)?'👑 LEADER':b.job.toUpperCase()}</div>` : ''}
       </div>
       <div style="padding:10px 14px;">
         ${this._bar('Hunger', b.hunger, '#c87a4a')}
