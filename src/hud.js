@@ -1,399 +1,285 @@
-import { PLAYER_MAX_HEALTH } from "./constants.js";
+// HUD — all on-screen UI. Builds DOM into #ui-root, reflects sim/god state, and emits
+// tool changes. Keeps the "beings & their minds" focus: a rich inspector for one being.
+import { TIME_SCALES, TIME_LABELS, GOD, LIFE } from './config.js';
 
-/**
- * HUD manager — updates all on-screen UI elements.
- * Enhanced with weapon name, kill counter, score popups, and announcements.
- */
+const TOOLS = [
+  { id: 'inspect', icon: '🔍', name: 'Observe', cost: 0, hint: 'Click a being to read their mind.' },
+  { id: 'inspire', icon: '✨', name: 'Inspire', cost: GOD.COST_INSPIRE, hint: 'Click a being, then a place — plant an urge.' },
+  { id: 'bless',   icon: '🌟', name: 'Bless',   cost: GOD.COST_BLESS, hint: 'Click the land — food, healing, devotion.' },
+  { id: 'smite',   icon: '🔥', name: 'Smite',   cost: GOD.COST_SMITE, hint: 'Click the land — fire and terror.' },
+  { id: 'possess', icon: '👁', name: 'Possess', cost: 0, hint: 'Click a being — walk beside their life.' },
+];
+
 export class HUD {
-  constructor() {
-    this.healthFill = document.getElementById("health-fill");
-    this.healthValue = document.getElementById("health-value");
-    this.ammoCurrent = document.getElementById("ammo-current");
-    this.ammoReserve = document.getElementById("ammo-reserve");
-    this.waveNumber = document.getElementById("wave-number");
-    this.zombiesRemaining = document.getElementById("zombies-remaining");
-    this.scoreDisplay = document.getElementById("score-display");
-    this.waveAnnounce = document.getElementById("wave-announce");
-    this.reloadHint = document.getElementById("reload-hint");
-    this.hudElement = document.getElementById("hud");
-    this.weaponName = document.getElementById("weapon-name");
-    this.killCounter = document.getElementById("kill-counter");
-    this.scorePopup = document.getElementById("score-popup");
+  constructor(sim, god) {
+    this.sim = sim; this.god = god;
+    this.tool = 'inspect';
+    this.onTool = () => {};
+    this.onSpeed = () => {};
+    this.onUnpossess = () => {};
+    this.selected = null;
+    this._build();
+  }
 
-    this.announceTimer = 0;
-    this.score = 0;
-    this.kills = 0;
-    this.weaponNameTimer = 0;
-    this.scorePopupTimer = 0;
+  _el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
 
-    // Kill streak system
-    this._streakCount = 0;
-    this._streakTimer = 0; // resets if no kill within 3 seconds
-    this._streakThresholds = [5, 10, 15, 25, 50];
-    this._streakNames = [
-      "KILLING SPREE",
-      "RAMPAGE",
-      "UNSTOPPABLE",
-      "GODLIKE",
-      "LEGENDARY",
-    ];
-    this._streakBonuses = [200, 500, 1000, 2500, 5000];
+  _build() {
+    const root = document.getElementById('ui-root');
+    root.innerHTML = '';
 
-    // Create kill streak overlay
-    this._streakEl = document.createElement("div");
-    Object.assign(this._streakEl.style, {
-      position: "fixed",
-      top: "0",
-      left: "0",
-      right: "0",
-      height: "0",
-      background: "linear-gradient(to bottom, rgba(0,200,50,0.6), transparent)",
-      pointerEvents: "none",
-      zIndex: "48",
-      transition: "height 0.3s, opacity 0.5s",
-      opacity: "0",
+    // ---- top bar ----
+    const top = this._el('div', 'panel pointer');
+    top.style.cssText += 'position:absolute;top:14px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:14px;padding:8px 16px;';
+    const speedBtns = TIME_SCALES.map((s, i) =>
+      `<button data-sp="${i}" class="sp" style="background:none;border:1px solid var(--panel-edge);color:var(--text);
+        border-radius:4px;padding:5px 9px;cursor:pointer;font-size:12px;font-family:inherit;">${TIME_LABELS[i].split(' ')[0]}</button>`
+    ).join('');
+    top.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;min-width:96px;">
+        <div style="color:var(--gold);font-size:18px;font-weight:700;letter-spacing:1px;" id="hud-year">Year 0</div>
+        <div style="color:var(--text-dim);font-size:10px;letter-spacing:1px;" id="hud-speed">Lived time</div>
+      </div>
+      <div style="display:flex;gap:5px;">${speedBtns}</div>
+      <div style="width:1px;height:30px;background:var(--panel-edge);"></div>
+      <div style="display:flex;flex-direction:column;align-items:center;min-width:70px;">
+        <div style="color:var(--text);font-size:16px;font-weight:600;" id="hud-pop">0</div>
+        <div style="color:var(--text-dim);font-size:10px;">souls</div>
+      </div>`;
+    root.appendChild(top);
+    top.querySelectorAll('.sp').forEach(btn =>
+      btn.addEventListener('click', () => this.onSpeed(+btn.dataset.sp)));
+    this.elYear = top.querySelector('#hud-year');
+    this.elSpeed = top.querySelector('#hud-speed');
+    this.elPop = top.querySelector('#hud-pop');
+    this.speedBtns = top.querySelectorAll('.sp');
+
+    // ---- god / faith (top-left) ----
+    const gp = this._el('div', 'panel');
+    gp.style.cssText += 'position:absolute;top:14px;left:14px;padding:10px 14px;min-width:180px;';
+    gp.innerHTML = `
+      <div style="color:var(--gold);font-size:13px;letter-spacing:3px;font-weight:700;">AEON</div>
+      <div style="color:var(--text-dim);font-size:10px;letter-spacing:2px;margin-bottom:8px;" id="god-title">THE SILENT ONE</div>
+      <div style="color:var(--gold-dim);font-size:10px;letter-spacing:1px;">FAITH</div>
+      <div style="height:8px;background:rgba(255,255,255,0.08);border-radius:4px;margin-top:3px;overflow:hidden;">
+        <div id="faith-fill" style="height:100%;width:0%;background:linear-gradient(90deg,var(--gold-dim),var(--gold));transition:width .3s;"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:3px;">
+        <span id="faith-val" style="color:var(--text);font-size:11px;">0</span>
+        <span id="believers" style="color:var(--text-dim);font-size:10px;">0 believers</span>
+      </div>`;
+    root.appendChild(gp);
+    this.elGodTitle = gp.querySelector('#god-title');
+    this.elFaithFill = gp.querySelector('#faith-fill');
+    this.elFaithVal = gp.querySelector('#faith-val');
+    this.elBelievers = gp.querySelector('#believers');
+
+    // ---- power palette (left) ----
+    const pal = this._el('div', 'panel pointer');
+    pal.style.cssText += 'position:absolute;left:14px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:6px;padding:8px;';
+    TOOLS.forEach(t => {
+      const b = this._el('button', 'tool');
+      b.dataset.tool = t.id;
+      b.style.cssText = 'display:flex;align-items:center;gap:8px;background:none;border:1px solid transparent;color:var(--text);border-radius:5px;padding:7px 10px;cursor:pointer;font-family:inherit;width:128px;text-align:left;transition:.15s;';
+      b.innerHTML = `<span style="font-size:18px;">${t.icon}</span>
+        <span style="display:flex;flex-direction:column;line-height:1.15;">
+          <span style="font-size:12px;">${t.name}</span>
+          <span style="font-size:9px;color:var(--text-dim);">${t.cost ? t.cost + ' faith' : 'free'}</span>
+        </span>`;
+      b.addEventListener('click', () => this.setTool(t.id));
+      b.addEventListener('mouseenter', () => this._flash(t.hint));
+      pal.appendChild(b);
     });
-    document.body.appendChild(this._streakEl);
+    root.appendChild(pal);
+    this.toolBtns = pal.querySelectorAll('.tool');
 
-    // Kill streak image — try loading PNG, fallback to text
-    this._streakText = document.createElement("div");
-    Object.assign(this._streakText.style, {
-      position: "fixed",
-      top: "15%",
-      left: "50%",
-      transform: "translateX(-50%)",
-      pointerEvents: "none",
-      zIndex: "49",
-      opacity: "0",
-      transition: "opacity 0.3s",
-      textAlign: "center",
+    // ---- hint line (bottom-center) ----
+    this.elHint = this._el('div', 'panel');
+    this.elHint.style.cssText += 'position:absolute;bottom:14px;left:50%;transform:translateX(-50%);padding:7px 16px;font-size:12px;color:var(--text-dim);letter-spacing:1px;';
+    this.elHint.textContent = 'Observe your world. Select a being to read their mind.';
+    root.appendChild(this.elHint);
+
+    // ---- inspector (right) ----
+    this.inspector = this._el('div', 'panel pointer');
+    this.inspector.style.cssText += 'position:absolute;right:14px;top:14px;width:280px;max-height:calc(100vh - 200px);overflow-y:auto;padding:0;display:none;';
+    root.appendChild(this.inspector);
+
+    // ---- chronicle (bottom-right) ----
+    this.chron = this._el('div', 'panel pointer');
+    this.chron.style.cssText += 'position:absolute;right:14px;bottom:14px;width:280px;max-height:170px;overflow-y:auto;padding:10px 12px;display:none;';
+    this.chron.innerHTML = `<div style="color:var(--gold-dim);font-size:10px;letter-spacing:2px;margin-bottom:6px;">CHRONICLE</div><div id="chron-list"></div>`;
+    root.appendChild(this.chron);
+    this.elChron = this.chron.querySelector('#chron-list');
+    this.sim.chronicle.onAdd(() => this._renderChron());
+
+    // possession banner
+    this.posBanner = this._el('div', 'panel pointer');
+    this.posBanner.style.cssText += 'position:absolute;bottom:54px;left:50%;transform:translateX(-50%);padding:8px 16px;display:none;align-items:center;gap:12px;';
+    root.appendChild(this.posBanner);
+
+    this.setTool('inspect');
+    this._renderChron();
+  }
+
+  setTool(id) {
+    this.tool = id;
+    this.toolBtns.forEach(b => {
+      const on = b.dataset.tool === id;
+      b.style.borderColor = on ? 'var(--gold)' : 'transparent';
+      b.style.background = on ? 'rgba(232,200,122,0.12)' : 'none';
     });
+    const t = TOOLS.find(x => x.id === id);
+    this._flash(t.hint);
+    this.onTool(id);
+  }
 
-    // Try to load kill streak PNG
-    const streakImg = document.createElement("img");
-    streakImg.src = "/textures/killstreak.png";
-    streakImg.style.width = "400px";
-    streakImg.style.height = "auto";
-    streakImg.style.display = "none";
-    streakImg.onload = () => {
-      this._hasStreakImg = true;
-      streakImg.style.display = "block";
+  _flash(msg) { this.elHint.textContent = msg; }
+  message(msg) { this._flash(msg); }
+
+  // ---------- dynamic refresh ----------
+  update() {
+    const s = this.sim, g = this.god;
+    this.elYear.textContent = `Year ${s.year}`;
+    this.elSpeed.textContent = TIME_LABELS[s.speedIndex].replace(/^[^ ]+ /, '') || 'Paused';
+    this.elPop.textContent = s.population;
+    this.speedBtns.forEach((b, i) => {
+      const on = i === s.speedIndex;
+      b.style.background = on ? 'rgba(232,200,122,0.18)' : 'none';
+      b.style.color = on ? 'var(--gold)' : 'var(--text)';
+    });
+    this.elGodTitle.textContent = g.title.toUpperCase();
+    this.elFaithFill.style.width = `${(g.faith / GOD.FAITH_MAX) * 100}%`;
+    this.elFaithVal.textContent = Math.floor(g.faith);
+    this.elBelievers.textContent = `${s.believers()} believers`;
+    // disable powers we can't afford
+    this.toolBtns.forEach(b => {
+      const t = TOOLS.find(x => x.id === b.dataset.tool);
+      const afford = !t.cost || g.faith >= t.cost;
+      b.style.opacity = afford ? '1' : '0.4';
+      b.style.pointerEvents = afford ? 'auto' : 'none';
+    });
+    if (this.selected && this.selected.alive) this._renderInspector();
+    else if (this.selected) { this.selected = null; this.inspector.style.display = 'none'; }
+  }
+
+  selectBeing(b) {
+    this.selected = b;
+    this.inspector.style.display = b ? 'block' : 'none';
+    if (b) this._renderInspector();
+  }
+
+  _bar(label, val, color, invert = false) {
+    const v = Math.max(0, Math.min(100, val));
+    const shown = invert ? 100 - v : v;
+    return `<div style="margin:4px 0;">
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim);">
+        <span>${label}</span><span>${Math.round(v)}</span></div>
+      <div style="height:6px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden;">
+        <div style="height:100%;width:${shown}%;background:${color};"></div></div></div>`;
+  }
+
+  _traitRow(name, v) {
+    const pct = (v + 1) / 2 * 100;
+    return `<div style="display:flex;align-items:center;gap:6px;font-size:10px;margin:2px 0;">
+      <span style="width:54px;color:var(--text-dim);">${name}</span>
+      <div style="flex:1;height:4px;background:rgba(255,255,255,0.08);border-radius:2px;position:relative;">
+        <div style="position:absolute;left:50%;top:-1px;width:1px;height:6px;background:rgba(255,255,255,0.2);"></div>
+        <div style="position:absolute;left:${Math.min(pct,50)}%;width:${Math.abs(pct-50)}%;height:100%;background:${v>=0?'#7fae6a':'#b5705a'};"></div>
+      </div></div>`;
+  }
+
+  _renderInspector() {
+    const b = this.selected, s = this.sim;
+    const stageColor = b.stage === 'child' ? '#86b6e0' : b.stage === 'elder' ? '#c9a86a' : '#d8dae2';
+    // top relationships
+    const rels = [...b.bonds.entries()]
+      .map(([id, v]) => ({ o: s.beings.find(x => x.id === id), v }))
+      .filter(r => r.o && r.o.alive)
+      .sort((a, c) => Math.abs(c.v) - Math.abs(a.v)).slice(0, 4);
+    const relHtml = rels.length ? rels.map(r => {
+      const kind = r.v > 55 ? 'beloved' : r.v > 15 ? 'friend' : r.v < -40 ? 'enemy' : r.v < -10 ? 'rival' : 'acquaintance';
+      const col = r.v >= 0 ? '#7fae6a' : '#b5705a';
+      return `<div style="display:flex;justify-content:space-between;font-size:11px;margin:2px 0;">
+        <span class="rel-link" data-id="${r.o.id}" style="cursor:pointer;color:var(--text);">${r.o.name}</span>
+        <span style="color:${col};">${kind}</span></div>`;
+    }).join('') : `<div style="font-size:10px;color:var(--text-dim);">No bonds yet.</div>`;
+
+    const mem = b.memory.slice(-5).reverse().map(m =>
+      `<div style="font-size:10px;color:var(--text-dim);margin:2px 0;line-height:1.3;">• ${m.text}</div>`
+    ).join('') || `<div style="font-size:10px;color:var(--text-dim);">No memories yet.</div>`;
+
+    const godLine = b.godAwareness < 0.1 ? 'Unaware of you.'
+      : (b.godMood > 0.2 ? 'Loves you' : b.godMood < -0.2 ? 'Fears you' : 'Senses you')
+        + ` (${Math.round(b.godAwareness * 100)}% awareness)`;
+
+    this.inspector.innerHTML = `
+      <div style="padding:12px 14px;border-bottom:1px solid var(--panel-edge);">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+          <span style="color:var(--gold);font-size:17px;font-weight:600;">${b.name}</span>
+          <span style="color:${stageColor};font-size:11px;">${b.stage} · ${Math.floor(b.age)}y · ${b.sex === 'f' ? '♀' : '♂'}</span>
+        </div>
+        <div style="color:var(--text-dim);font-size:11px;margin-top:2px;">${this._actionVerb(b)}</div>
+      </div>
+      <div style="padding:10px 14px;">
+        ${this._bar('Hunger', b.hunger, '#c87a4a')}
+        ${this._bar('Energy', b.energy, '#6aa0c8')}
+        ${this._bar('Social', b.social, '#9a7ac8')}
+        ${b.gestating ? `<div style="font-size:10px;color:#c89; margin-top:4px;">🤰 expecting a child</div>` : ''}
+      </div>
+      <div style="padding:4px 14px 10px;">
+        <div style="color:var(--gold-dim);font-size:10px;letter-spacing:1px;margin-bottom:3px;">NATURE</div>
+        ${this._traitRow('timid·brave', b.traits.brave)}
+        ${this._traitRow('calm·curious', b.traits.curious)}
+        ${this._traitRow('cold·kind', b.traits.kind)}
+        ${this._traitRow('doubt·devout', b.traits.devout)}
+      </div>
+      <div style="padding:4px 14px 10px;">
+        <div style="color:var(--gold-dim);font-size:10px;letter-spacing:1px;margin-bottom:3px;">BONDS</div>
+        ${relHtml}
+      </div>
+      <div style="padding:4px 14px 10px;">
+        <div style="color:var(--gold-dim);font-size:10px;letter-spacing:1px;margin-bottom:3px;">MEMORY</div>
+        ${mem}
+      </div>
+      <div style="padding:4px 14px 12px;">
+        <div style="color:var(--gold-dim);font-size:10px;letter-spacing:1px;margin-bottom:3px;">BELIEF</div>
+        <div style="font-size:11px;color:${b.godMood<-0.2?'#b5705a':b.godMood>0.2?'#7fae6a':'var(--text-dim)'};">${godLine}</div>
+      </div>`;
+
+    this.inspector.querySelectorAll('.rel-link').forEach(el =>
+      el.addEventListener('click', () => {
+        const o = s.beings.find(x => x.id === +el.dataset.id);
+        if (o) { this.selectBeing(o); this.onSelectLink && this.onSelectLink(o); }
+      }));
+  }
+
+  _actionVerb(b) {
+    const verbs = {
+      resting: 'at rest', foraging: 'foraging for food', eating: 'eating', sleeping: 'sleeping',
+      talking: 'with others', courting: 'courting', wandering: 'wandering', seeking: 'following a strange urge', grieving: 'grieving',
     };
-    this._streakImg = streakImg;
-    this._hasStreakImg = false;
-
-    // Fallback text
-    this._streakLabel = document.createElement("div");
-    Object.assign(this._streakLabel.style, {
-      color: "#ff4422",
-      fontSize: "42px",
-      fontWeight: "bold",
-      fontFamily: "'Courier New', monospace",
-      textShadow: "0 0 20px rgba(255,50,0,0.8), 0 0 40px rgba(255,100,0,0.4)",
-      letterSpacing: "4px",
-    });
-
-    this._streakText.appendChild(streakImg);
-    this._streakText.appendChild(this._streakLabel);
-    document.body.appendChild(this._streakText);
-
-    // Streak counter display
-    this._streakCounter = document.createElement("div");
-    Object.assign(this._streakCounter.style, {
-      position: "fixed",
-      top: "26%",
-      left: "50%",
-      transform: "translateX(-50%)",
-      color: "#88ffaa",
-      fontSize: "18px",
-      fontFamily: "'Courier New', monospace",
-      textAlign: "center",
-      textShadow: "0 0 10px rgba(0,255,50,0.5)",
-      pointerEvents: "none",
-      zIndex: "49",
-      opacity: "0",
-      transition: "opacity 0.3s",
-    });
-    document.body.appendChild(this._streakCounter);
-
-    // Kill streak VIDEO overlay — plays on 10+ kills
-    this._streakVideo = document.createElement("video");
-    this._streakVideo.src = "/killstreak.mp4";
-    this._streakVideo.preload = "auto";
-    this._streakVideo.muted = false;
-    this._streakVideo.playsInline = true;
-    Object.assign(this._streakVideo.style, {
-      position: "fixed",
-      top: "50%",
-      left: "50%",
-      transform: "translate(-50%, -50%)",
-      width: "60vw",
-      height: "auto",
-      maxWidth: "800px",
-      pointerEvents: "none",
-      zIndex: "55",
-      opacity: "0",
-      transition: "opacity 0.2s",
-      mixBlendMode: "screen",
-      backgroundColor: "black",
-      borderRadius: "8px",
-    });
-    this._streakVideo.addEventListener("ended", () => {
-      this._streakVideo.style.opacity = "0";
-    });
-    document.body.appendChild(this._streakVideo);
-    this._hasStreakVideo = true;
+    return (verbs[b.action] || b.action) + '.';
   }
 
-  show() {
-    this.hudElement.style.display = "block";
+  setPossessed(b) {
+    if (b) {
+      this.posBanner.style.display = 'flex';
+      this.posBanner.innerHTML = `<span style="color:var(--gold);font-size:12px;">👁 Walking with <b>${b.name}</b></span>
+        <span style="color:var(--text-dim);font-size:11px;">WASD to suggest a path · </span>
+        <button id="unposs" style="background:none;border:1px solid var(--panel-edge);color:var(--text);border-radius:4px;padding:4px 10px;cursor:pointer;font-family:inherit;font-size:11px;">Let go</button>`;
+      this.posBanner.querySelector('#unposs').addEventListener('click', () => this.onUnpossess());
+    } else this.posBanner.style.display = 'none';
   }
 
-  hide() {
-    this.hudElement.style.display = "none";
+  _renderChron() {
+    if (!this.elChron) return;
+    this.chron.style.display = 'block';
+    const evs = this.sim.chronicle.recent(30);
+    this.elChron.innerHTML = evs.map(e =>
+      `<div style="font-size:11px;margin:3px 0;line-height:1.3;color:${this._chronColor(e.kind)};">
+        <span style="color:var(--text-dim);">Y${e.year}</span> ${e.icon} ${e.text}</div>`
+    ).join('');
   }
-
-  addScore(points) {
-    this.score += points;
-
-    // Show score popup for positive gains
-    if (points > 0 && this.scorePopup) {
-      this.scorePopup.textContent = `+${points}`;
-      this.scorePopup.style.opacity = "1";
-      this.scorePopupTimer = 1.0;
-    }
-  }
-
-  addKill() {
-    this.kills += 1;
-
-    // Kill streak tracking
-    this._streakCount += 1;
-    this._streakTimer = 3.0; // 3 seconds to get next kill or streak resets
-
-    // Check thresholds
-    for (let i = this._streakThresholds.length - 1; i >= 0; i--) {
-      if (this._streakCount === this._streakThresholds[i]) {
-        this._triggerStreak(i);
-        break;
-      }
-    }
-  }
-
-  _triggerStreak(tier) {
-    const name = this._streakNames[tier];
-    const bonus = this._streakBonuses[tier];
-
-    // Award bonus points
-    this.addScore(bonus);
-
-    // Show green ooze drip effect from top
-    this._streakEl.style.opacity = "1";
-    this._streakEl.style.height = `${15 + tier * 8}%`;
-
-    // Show streak — image or text
-    if (this._hasStreakImg) {
-      this._streakImg.style.display = "block";
-      this._streakImg.style.width = `${300 + tier * 40}px`;
-      this._streakLabel.textContent = name;
-    } else {
-      this._streakImg.style.display = "none";
-      this._streakLabel.textContent = name;
-      this._streakLabel.style.fontSize = `${36 + tier * 6}px`;
-    }
-    this._streakText.style.opacity = "1";
-
-    // Show counter
-    this._streakCounter.textContent = `${this._streakCount} KILLS — +${bonus} BONUS`;
-    this._streakCounter.style.opacity = "1";
-
-    // Play kill streak video for tier 1+ (10+ kills)
-    if (tier >= 1 && this._hasStreakVideo && this._streakVideo) {
-      this._streakVideo.currentTime = 0;
-      this._streakVideo.style.opacity = "1";
-      this._streakVideo.play().catch(() => {});
-    }
-
-    // Fade out after 2.5 seconds (text/ooze; video fades on its own end event)
-    clearTimeout(this._streakFadeTimer);
-    this._streakFadeTimer = setTimeout(() => {
-      this._streakEl.style.opacity = "0";
-      this._streakEl.style.height = "0";
-      this._streakText.style.opacity = "0";
-      this._streakCounter.style.opacity = "0";
-    }, 2500);
-  }
-
-  announceWave(waveNum) {
-    this.waveAnnounce.textContent = `WAVE ${waveNum}`;
-    this.waveAnnounce.style.opacity = "1";
-    this.announceTimer = 2.5;
-  }
-
-  /** Generic announcement (door opened, etc.) */
-  announce(text) {
-    this.waveAnnounce.textContent = text;
-    this.waveAnnounce.style.opacity = "1";
-    this.announceTimer = 2.0;
-  }
-
-  update(dt, player, weapon, waveManager, enemyManager) {
-    // Health
-    const healthPct = (player.health / PLAYER_MAX_HEALTH) * 100;
-    this.healthFill.style.width = `${healthPct}%`;
-    this.healthValue.textContent = Math.ceil(player.health);
-
-    if (healthPct <= 25) {
-      this.healthFill.style.background = "#ff0000";
-    } else if (healthPct <= 50) {
-      this.healthFill.style.background = "#ff6600";
-    } else {
-      this.healthFill.style.background = "#cc3333";
-    }
-
-    // Ammo
-    this.ammoCurrent.textContent = weapon.ammo;
-    this.ammoReserve.textContent = `/ ${weapon.reserve}`;
-
-    if (weapon.ammo <= 5 && weapon.ammo > 0) {
-      this.ammoCurrent.style.color = "#ff6600";
-    } else if (weapon.ammo === 0) {
-      this.ammoCurrent.style.color = "#ff0000";
-    } else {
-      this.ammoCurrent.style.color = "#ffffff";
-    }
-
-    // Reload hint
-    if (weapon.ammo === 0 && weapon.reserve > 0 && !weapon.reloading) {
-      this.reloadHint.style.opacity = "1";
-    } else {
-      this.reloadHint.style.opacity = "0";
-    }
-
-    // Wave info
-    this.waveNumber.textContent = `WAVE ${waveManager.wave || 1}`;
-    if (waveManager.state === "waiting" && waveManager.wave > 0) {
-      const timeLeft = Math.ceil(waveManager.delayTimer);
-      this.zombiesRemaining.textContent = `Next wave in ${timeLeft}s`;
-      this.zombiesRemaining.style.color = timeLeft <= 5 ? "#ff4444" : "#888";
-    } else {
-      this.zombiesRemaining.textContent = `Zombies: ${enemyManager.aliveCount}`;
-      this.zombiesRemaining.style.color = "#888";
-    }
-
-    // Score
-    this.scoreDisplay.textContent = `SCORE: ${this.score}`;
-
-    // Kill counter
-    if (this.killCounter) {
-      this.killCounter.textContent = `KILLS: ${this.kills}`;
-    }
-
-    // Kill streak timer — resets if no kill within 3 seconds
-    if (this._streakTimer > 0) {
-      this._streakTimer -= dt;
-      if (this._streakTimer <= 0) {
-        this._streakCount = 0; // streak broken
-      }
-    }
-
-    // Wave announce fade
-    if (this.announceTimer > 0) {
-      this.announceTimer -= dt;
-      if (this.announceTimer <= 0.5) {
-        this.waveAnnounce.style.opacity = String(
-          Math.max(0, this.announceTimer / 0.5),
-        );
-      }
-      if (this.announceTimer <= 0) {
-        this.waveAnnounce.style.opacity = "0";
-      }
-    }
-
-    // Score popup fade
-    if (this.scorePopupTimer > 0) {
-      this.scorePopupTimer -= dt;
-      if (this.scorePopupTimer <= 0.3 && this.scorePopup) {
-        this.scorePopup.style.opacity = String(
-          Math.max(0, this.scorePopupTimer / 0.3),
-        );
-      }
-      if (this.scorePopupTimer <= 0 && this.scorePopup) {
-        this.scorePopup.style.opacity = "0";
-      }
-    }
-  }
-
-  showWeaponName(name) {
-    if (this.weaponName) {
-      this.weaponName.textContent = name.toUpperCase();
-      this.weaponName.style.opacity = "1";
-      this.weaponNameTimer = 2.0;
-    }
-    this.announce(name.toUpperCase());
-  }
-
-  showGameOver(wave, score, kills) {
-    // Create and play death video overlay FIRST
-    const deathVideo = document.createElement("video");
-    deathVideo.src = "/death.mp4";
-    deathVideo.playsInline = true;
-    deathVideo.muted = true; // muted first to guarantee autoplay
-    Object.assign(deathVideo.style, {
-      position: "fixed",
-      top: "0",
-      left: "0",
-      width: "100vw",
-      height: "100vh",
-      objectFit: "cover",
-      zIndex: "200",
-      pointerEvents: "none",
-      backgroundColor: "#000",
-    });
-    document.body.appendChild(deathVideo);
-
-    // Play death video — start muted, unmute after play begins
-    deathVideo
-      .play()
-      .then(() => {
-        deathVideo.muted = false;
-      })
-      .catch(() => {
-        // If play fails entirely, show game over immediately
-        deathVideo.remove();
-        document.getElementById("final-wave").textContent = `Wave: ${wave}`;
-        document.getElementById("final-score").textContent = `Score: ${score}`;
-        document.getElementById("final-kills").textContent = `Kills: ${kills}`;
-        document.getElementById("game-over").style.display = "flex";
-      });
-
-    deathVideo.addEventListener("ended", () => {
-      deathVideo.remove();
-      // Now show the standard game over overlay
-      document.getElementById("final-wave").textContent = `Wave: ${wave}`;
-      document.getElementById("final-score").textContent = `Score: ${score}`;
-      document.getElementById("final-kills").textContent = `Kills: ${kills}`;
-      document.getElementById("game-over").style.display = "flex";
-    });
-
-    // Fallback: if video fails to play, show game over after 3 seconds
-    deathVideo.addEventListener("error", () => {
-      deathVideo.remove();
-      document.getElementById("final-wave").textContent = `Wave: ${wave}`;
-      document.getElementById("final-score").textContent = `Score: ${score}`;
-      document.getElementById("final-kills").textContent = `Kills: ${kills}`;
-      document.getElementById("game-over").style.display = "flex";
-    });
-
-    // Safety timeout — if video is longer than 10s, force game over screen
-    setTimeout(() => {
-      if (deathVideo.parentNode) {
-        deathVideo.remove();
-        document.getElementById("final-wave").textContent = `Wave: ${wave}`;
-        document.getElementById("final-score").textContent = `Score: ${score}`;
-        document.getElementById("final-kills").textContent = `Kills: ${kills}`;
-        document.getElementById("game-over").style.display = "flex";
-      }
-    }, 10000);
+  _chronColor(kind) {
+    return { god: '#e8c87a', tech: '#7fae6a', death: '#b5705a', epoch: '#c9a86a', birth: '#9ab5d0' }[kind] || 'var(--text)';
   }
 }

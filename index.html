@@ -3,368 +3,72 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DEAD ZONE — Zombie Survival</title>
+  <title>AEON — God of Pangaea</title>
   <style>
+    :root {
+      --gold: #e8c87a;
+      --gold-dim: #b89a52;
+      --ink: #0c0e14;
+      --panel: rgba(16, 19, 28, 0.82);
+      --panel-edge: rgba(232, 200, 122, 0.22);
+      --text: #d8dae2;
+      --text-dim: #8b8f9c;
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: var(--ink); }
+    body { font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; color: var(--text); }
     canvas { display: block; }
 
-    #blocker {
-      position: fixed; inset: 0;
-      background: #000;
-      display: flex; align-items: center; justify-content: center;
-      z-index: 100; cursor: pointer;
+    /* ---- Loading / title veil ---- */
+    #veil {
+      position: fixed; inset: 0; z-index: 200;
+      background:
+        radial-gradient(ellipse at 50% 38%, rgba(40,34,20,0.55), transparent 60%),
+        linear-gradient(180deg, #06070b 0%, #0c0e14 60%, #06070b 100%);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      transition: opacity 0.8s ease;
     }
+    #veil.hidden { opacity: 0; pointer-events: none; }
+    #veil .mark {
+      font-size: clamp(38px, 8vw, 92px); letter-spacing: 0.34em;
+      font-weight: 700; color: var(--gold);
+      text-shadow: 0 0 38px rgba(232,200,122,0.35); padding-left: 0.34em;
+    }
+    #veil .sub {
+      margin-top: 0.6em; font-size: clamp(11px, 1.6vw, 16px);
+      letter-spacing: 0.5em; color: var(--gold-dim); padding-left: 0.5em;
+    }
+    #veil .status { margin-top: 2.4em; font-size: 13px; letter-spacing: 0.2em; color: var(--text-dim); }
+    #veil .enter {
+      margin-top: 1.6em; font-size: 14px; letter-spacing: 0.3em; color: var(--text);
+      border: 1px solid var(--panel-edge); padding: 14px 34px; border-radius: 3px;
+      cursor: pointer; opacity: 0; transition: opacity 0.4s, background 0.2s, color 0.2s;
+      background: rgba(232,200,122,0.04);
+    }
+    #veil .enter.ready { opacity: 1; }
+    #veil .enter:hover { background: rgba(232,200,122,0.14); color: var(--gold); }
+    @keyframes pulse { 0%,100% { opacity: 0.5; } 50% { opacity: 1; } }
+    #veil .status.loading { animation: pulse 1.4s ease-in-out infinite; }
 
-    #intro-video {
-      position: absolute; inset: 0;
-      width: 100%; height: 100%;
-      object-fit: cover;
-      z-index: 0;
+    #ui-root { position: fixed; inset: 0; pointer-events: none; z-index: 50; }
+    .panel {
+      background: var(--panel); border: 1px solid var(--panel-edge);
+      border-radius: 6px; backdrop-filter: blur(7px);
+      box-shadow: 0 8px 30px rgba(0,0,0,0.45);
     }
-
-    #blocker .content {
-      position: absolute; z-index: 1;
-      bottom: 30px; left: 50%;
-      transform: translateX(-50%);
-      text-align: center; color: #ccc; font-family: 'Courier New', monospace;
-      width: 90%;
-      max-width: 700px;
-    }
-
-    #blocker p { font-size: 18px; margin: 8px 0; }
-
-    #click-to-play {
-      font-size: 24px; color: #fff; margin-top: 16px;
-      animation: blink 1.2s ease-in-out infinite;
-      text-shadow: 0 0 20px rgba(255, 255, 255, 0.6), 0 0 40px rgba(200, 0, 0, 0.3);
-      letter-spacing: 5px;
-      font-weight: bold;
-    }
-
-    @keyframes blink {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.15; }
-    }
-
-    #blocker .controls {
-      font-size: 14px; color: rgba(200,200,200,0.85); margin-top: 20px;
-      background: rgba(0,0,0,0.5);
-      padding: 14px 24px;
-      border-radius: 6px;
-    }
-    #blocker .controls span { color: #ddd; }
-
-    #blocker::after {
-      content: '';
-      position: absolute; left: 0; right: 0; bottom: 0;
-      height: 12%;
-      background: #000;
-      z-index: 0;
-      pointer-events: none;
-    }
-
-    #hud {
-      position: fixed; inset: 0;
-      pointer-events: none;
-      font-family: 'Courier New', monospace;
-      z-index: 50;
-    }
-
-    #crosshair {
-      position: fixed; top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-      width: 32px; height: 32px;
-      pointer-events: none;
-      z-index: 60;
-    }
-    #crosshair::before, #crosshair::after {
-      content: ''; position: absolute; background: #fff;
-    }
-    #crosshair::before {
-      width: 2px; height: 12px; left: 15px; top: 0;
-      box-shadow: 0 20px 0 #fff;
-    }
-    #crosshair::after {
-      width: 12px; height: 2px; top: 15px; left: 0;
-      box-shadow: 20px 0 0 #fff;
-    }
-    #crosshair-dot {
-      position: absolute; top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-      width: 4px; height: 4px;
-      background: #fff;
-      border-radius: 50%;
-      pointer-events: none;
-    }
-
-    #health-bar {
-      position: absolute; bottom: 40px; left: 40px;
-    }
-    #health-bar .label { color: #c33; font-size: 14px; margin-bottom: 4px; }
-    #health-bar .bar {
-      width: 200px; height: 8px; background: #333; border: 1px solid #555;
-    }
-    #health-bar .fill {
-      height: 100%; background: #c33; transition: width 0.2s;
-    }
-    #health-value {
-      color: #c33; font-size: 24px; font-weight: bold; margin-top: 4px;
-    }
-
-    #ammo-display {
-      position: absolute; bottom: 40px; right: 40px;
-      text-align: right;
-    }
-    #ammo-current { color: #fff; font-size: 48px; font-weight: bold; }
-    #ammo-reserve { color: #888; font-size: 20px; }
-    #ammo-label { color: #888; font-size: 12px; }
-    #weapon-name {
-      color: #aaa; font-size: 14px; margin-bottom: 4px;
-      letter-spacing: 2px; opacity: 0; transition: opacity 0.3s;
-    }
-
-    #wave-display {
-      position: absolute; top: 40px; left: 50%;
-      transform: translateX(-50%);
-      text-align: center;
-    }
-    #wave-number { color: #c33; font-size: 28px; font-weight: bold; }
-    #zombies-remaining { color: #888; font-size: 16px; }
-
-    #score-display {
-      position: absolute; top: 40px; right: 40px;
-      color: #fff; font-size: 20px;
-    }
-
-    #score-popup {
-      position: absolute; top: 65px; right: 40px;
-      color: #ffcc00; font-size: 16px;
-      opacity: 0; transition: opacity 0.2s;
-    }
-
-    #kill-counter {
-      position: absolute; top: 90px; right: 40px;
-      color: #888; font-size: 14px;
-    }
-
-    #wave-announce {
-      position: absolute; top: 38%; left: 50%;
-      transform: translate(-50%, -50%);
-      color: #c33; font-size: 64px; font-weight: bold;
-      text-shadow: 0 0 30px rgba(200, 0, 0, 0.8), 0 0 60px rgba(200, 0, 0, 0.4);
-      opacity: 0; transition: opacity 0.3s;
-      pointer-events: none;
-      letter-spacing: 4px;
-    }
-
-    #damage-overlay {
-      position: fixed; inset: 0;
-      pointer-events: none;
-      z-index: 49;
-      opacity: 0;
-      transition: opacity 0.15s;
-      background: radial-gradient(ellipse at center, transparent 40%, rgba(120, 0, 0, 0.6) 100%);
-    }
-    #damage-overlay.hit {
-      opacity: 1;
-    }
-
-    #blood-vignette {
-      position: fixed; inset: 0;
-      pointer-events: none;
-      z-index: 48;
-      opacity: 0;
-      transition: opacity 0.5s;
-      background: radial-gradient(ellipse at center, transparent 30%, rgba(80, 0, 0, 0.8) 100%);
-    }
-
-    #game-over {
-      position: fixed; inset: 0;
-      background: rgba(0, 0, 0, 0.92);
-      display: none; align-items: center; justify-content: center;
-      z-index: 200; font-family: 'Courier New', monospace;
-      text-align: center;
-    }
-    #game-over h1 {
-      color: #c33; font-size: 72px; margin-bottom: 20px;
-      text-shadow: 0 0 40px rgba(200, 0, 0, 0.6);
-      letter-spacing: 6px;
-    }
-    #game-over .stats { color: #888; font-size: 20px; margin: 10px 0; }
-    #game-over .restart {
-      color: #fff; font-size: 24px; margin-top: 30px;
-      cursor: pointer; pointer-events: all;
-    }
-    #game-over .restart:hover { color: #c33; }
-
-    #reload-hint {
-      position: absolute; bottom: 80px; left: 50%;
-      transform: translateX(-50%);
-      color: #ff6; font-size: 16px;
-      opacity: 0; transition: opacity 0.3s;
-    }
-
-    #hitmarker {
-      position: absolute; top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-      width: 30px; height: 30px;
-      opacity: 0; pointer-events: none;
-    }
-    #hitmarker::before, #hitmarker::after {
-      content: ''; position: absolute; background: #fff;
-    }
-    #hitmarker::before {
-      width: 2px; height: 12px; left: 14px; top: 0;
-      box-shadow: 0 18px 0 #fff;
-    }
-    #hitmarker::after {
-      width: 12px; height: 2px; top: 14px; left: 0;
-      box-shadow: 18px 0 0 #fff;
-    }
-
-    #interact-prompt {
-      position: fixed;
-      bottom: 35%;
-      left: 50%;
-      transform: translateX(-50%);
-      color: #fff;
-      font-family: 'Courier New', monospace;
-      font-size: 18px;
-      text-align: center;
-      pointer-events: none;
-      z-index: 55;
-      display: none;
-      text-shadow: 0 0 10px rgba(0,0,0,0.8), 0 2px 4px rgba(0,0,0,0.5);
-      background: rgba(0,0,0,0.4);
-      padding: 8px 16px;
-      border: 1px solid rgba(255,255,255,0.15);
-    }
+    .pointer { pointer-events: auto; }
+    ::selection { background: rgba(232,200,122,0.3); }
   </style>
 </head>
 <body>
-  <div id="blocker">
-    <audio id="menu-music" loop muted>
-      <source src="/music_dead_sector.mp3" type="audio/mpeg" />
-    </audio>
-    <video id="intro-video" autoplay loop muted playsinline>
-      <source src="/intro.mp4" type="video/mp4" />
-    </video>
-    <div class="content">
-      <div id="click-to-play">CLICK TO PLAY</div>
-      <div style="font-size: 11px; color: #555; margin-top: 10px; letter-spacing: 2px;">
-        4 CHAPTERS &mdash; 25 ROUNDS &mdash; SURVIVE THEM ALL
-      </div>
-    </div>
+  <div id="veil">
+    <div class="mark">AEON</div>
+    <div class="sub">GOD OF PANGAEA</div>
+    <div class="status loading" id="veil-status">SHAPING THE WORLD…</div>
+    <div class="enter" id="veil-enter">ENTER THE WORLD</div>
   </div>
 
-  <div id="hud" style="display: none;">
-    <div id="crosshair"><div id="crosshair-dot"></div></div>
-
-    <div id="health-bar">
-      <div class="label">HEALTH</div>
-      <div class="bar"><div class="fill" id="health-fill"></div></div>
-      <div id="health-value">100</div>
-    </div>
-
-    <div id="ammo-display">
-      <div id="weapon-name"></div>
-      <div id="ammo-label">AMMO</div>
-      <div><span id="ammo-current">30</span> <span id="ammo-reserve">/ 120</span></div>
-      <div id="grenade-count" style="color: #8a8; font-size: 14px; margin-top: 6px;">🧨 3</div>
-    </div>
-
-    <div id="wave-display">
-      <div id="wave-number">WAVE 1</div>
-      <div id="zombies-remaining">Zombies: 0</div>
-    </div>
-
-    <div id="score-display">SCORE: 0</div>
-    <div id="score-popup"></div>
-    <div id="kill-counter">KILLS: 0</div>
-
-    <div id="wave-announce"></div>
-    <div id="reload-hint">PRESS R TO RELOAD</div>
-    <div id="hitmarker"></div>
-
-    <div id="volume-control" style="
-      position: absolute; bottom: 40px; left: 50%;
-      transform: translateX(-50%);
-      display: flex; align-items: center; gap: 8px;
-      opacity: 0; transition: opacity 0.3s;
-      pointer-events: all;
-    ">
-      <span style="color: #888; font-size: 12px;">VOL</span>
-      <input type="range" id="volume-slider" min="0" max="100" value="70"
-        style="width: 100px; accent-color: #c33; cursor: pointer;" />
-      <span id="volume-value" style="color: #888; font-size: 12px;">70%</span>
-    </div>
-  </div>
-
-  <div id="weapon-sprite-container" style="display:none;">
-    <img id="weapon-sprite" src="" alt="" draggable="false"
-      style="display:block; width:100%; height:auto; image-rendering:auto;" />
-  </div>
-
-  <div id="interact-prompt"></div>
-
-  <div id="damage-overlay"></div>
-  <div id="blood-vignette"></div>
-
-  <div id="pause-menu" style="
-    position: fixed; inset: 0;
-    background: rgba(0,0,0,0.85);
-    display: none; align-items: center; justify-content: center;
-    z-index: 150; font-family: 'Courier New', monospace;
-  ">
-    <div style="text-align: center; color: #ccc; max-width: 400px;">
-      <h1 style="color: #c33; font-size: 42px; letter-spacing: 4px; margin-bottom: 30px;
-        text-shadow: 0 0 20px rgba(200,0,0,0.5);">PAUSED</h1>
-
-      <div style="text-align: left; margin: 0 auto; padding: 20px; background: rgba(255,255,255,0.05);
-        border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
-
-        <div style="margin-bottom: 20px;">
-          <div style="color: #888; font-size: 12px; margin-bottom: 6px;">MASTER VOLUME</div>
-          <input type="range" id="pause-master-vol" min="0" max="100" value="70"
-            style="width: 100%; accent-color: #c33; cursor: pointer;" />
-        </div>
-
-        <div style="margin-bottom: 20px;">
-          <div style="color: #888; font-size: 12px; margin-bottom: 6px;">MUSIC VOLUME</div>
-          <input type="range" id="pause-music-vol" min="0" max="100" value="35"
-            style="width: 100%; accent-color: #c33; cursor: pointer;" />
-        </div>
-
-        <div style="margin-bottom: 20px;">
-          <div style="color: #888; font-size: 12px; margin-bottom: 6px;">NOW PLAYING</div>
-          <div id="pause-track-name" style="color: #aaa; font-size: 14px;">—</div>
-          <div id="pause-next-track" style="color: #c33; font-size: 14px; margin-top: 8px;
-            cursor: pointer; pointer-events: all;">[ NEXT TRACK ▶ ]</div>
-        </div>
-
-        <div style="margin-bottom: 20px;">
-          <div style="color: #888; font-size: 12px; margin-bottom: 6px;">MOUSE SENSITIVITY</div>
-          <input type="range" id="pause-sensitivity" min="1" max="10" value="4"
-            style="width: 100%; accent-color: #c33; cursor: pointer;" />
-        </div>
-      </div>
-
-      <div style="margin-top: 30px; color: #666; font-size: 14px;">
-        Click anywhere or press ESC to resume
-      </div>
-    </div>
-  </div>
-
-  <div id="game-over">
-    <div>
-      <h1>YOU DIED</h1>
-      <div class="stats" id="final-wave">Wave: 1</div>
-      <div class="stats" id="final-score">Score: 0</div>
-      <div class="stats" id="final-kills">Kills: 0</div>
-      <div class="restart" onclick="location.reload()">CLICK TO RESTART</div>
-    </div>
-  </div>
+  <div id="ui-root"></div>
 
   <script type="module" src="/src/main.js"></script>
 </body>
