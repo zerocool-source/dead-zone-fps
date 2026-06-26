@@ -8,21 +8,45 @@ export const WORLD = {
   ISLAND_FALLOFF: 1.5,// how hard the coast drops to sea
 };
 
-// One in-game DAY = this many real seconds at 1x speed.
-export const DAY_SECONDS = 12;
-export const YEAR_DAYS = 24;          // compressed year so lineages turn over in minutes
+// One in-game DAY = this many real seconds at 1x speed (slowed for day-to-day life).
+export const DAY_SECONDS = 34;
+export const YEAR_DAYS = 30;          // days per year
 
-export const TIME_SCALES = [0, 1, 6, 30, 120]; // pause, lived, fast, faster, deep-time
+export const TIME_SCALES = [0, 1, 4, 16, 70]; // pause, lived, days, seasons, ages
 export const TIME_LABELS = ['❚❚ Paused', '▶ Lived', '▶▶ Days', '▶▶▶ Seasons', '▶▶▶▶ Ages'];
+
+// fraction-of-day boundaries for the daily routine
+export const DAYTIME = { DAWN: 0.22, WORK_END: 0.62, DUSK: 0.74, SLEEP: 0.86 };
 
 export const NEEDS = {
   // per in-game-day drain/gain rates (0..100 scale)
-  HUNGER_RISE: 26,
-  ENERGY_FALL: 20,
-  SOCIAL_FALL: 14,
-  EAT_GAIN: 60,        // hunger removed per meal tick
+  HUNGER_RISE: 22,
+  ENERGY_FALL: 18,
+  SOCIAL_FALL: 12,
+  EAT_GAIN: 60,        // hunger removed per meal
   REST_GAIN: 55,
   SOCIAL_GAIN: 45,
+};
+
+// Tribe resource economy + the jobs that feed it.
+export const RES = {
+  START: { food: 30, wood: 12, stone: 5 },
+  CARRY: 7,             // how much a worker hauls per trip
+  FOOD_PER_BERRY: 2,
+  EAT_FROM_STORE: 7,    // food units a meal pulls from the storehouse
+  HUT_COST: { wood: 10, stone: 3 },
+  STORE_COST: { wood: 20, stone: 8 },
+};
+
+export const JOBS = ['forager', 'hunter', 'woodcutter', 'miner', 'builder', 'farmer', 'leader'];
+
+// fauna for hunting
+export const FAUNA = {
+  DEER_COUNT: 16,
+  DEER_FOOD: 14,        // food yield when caught
+  DEER_HIDE: 1,
+  FLEE_RADIUS: 14,
+  RESPAWN_DAYS: 4,
 };
 
 export const LIFE = {

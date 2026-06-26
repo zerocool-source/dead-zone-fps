@@ -45,6 +45,12 @@ export class HUD {
       <div style="display:flex;flex-direction:column;align-items:center;min-width:70px;">
         <div style="color:var(--text);font-size:16px;font-weight:600;" id="hud-pop">0</div>
         <div style="color:var(--text-dim);font-size:10px;">souls</div>
+      </div>
+      <div style="width:1px;height:30px;background:var(--panel-edge);"></div>
+      <div style="display:flex;gap:12px;font-size:13px;">
+        <span title="Food">🍖 <b id="res-food" style="color:#e0b070;">0</b></span>
+        <span title="Wood">🪵 <b id="res-wood" style="color:#c89060;">0</b></span>
+        <span title="Stone">🪨 <b id="res-stone" style="color:#b0b4bc;">0</b></span>
       </div>`;
     root.appendChild(top);
     top.querySelectorAll('.sp').forEach(btn =>
@@ -52,6 +58,9 @@ export class HUD {
     this.elYear = top.querySelector('#hud-year');
     this.elSpeed = top.querySelector('#hud-speed');
     this.elPop = top.querySelector('#hud-pop');
+    this.elFood = top.querySelector('#res-food');
+    this.elWood = top.querySelector('#res-wood');
+    this.elStone = top.querySelector('#res-stone');
     this.speedBtns = top.querySelectorAll('.sp');
 
     // ---- god / faith (top-left) ----
@@ -142,6 +151,11 @@ export class HUD {
     this.elYear.textContent = `Year ${s.year}`;
     this.elSpeed.textContent = TIME_LABELS[s.speedIndex].replace(/^[^ ]+ /, '') || 'Paused';
     this.elPop.textContent = s.population;
+    if (this.elFood) {
+      this.elFood.textContent = Math.floor(s.res.food);
+      this.elWood.textContent = Math.floor(s.res.wood);
+      this.elStone.textContent = Math.floor(s.res.stone);
+    }
     this.speedBtns.forEach((b, i) => {
       const on = i === s.speedIndex;
       b.style.background = on ? 'rgba(232,200,122,0.18)' : 'none';
@@ -219,6 +233,7 @@ export class HUD {
           <span style="color:${stageColor};font-size:11px;">${b.stage} · ${Math.floor(b.age)}y · ${b.sex === 'f' ? '♀' : '♂'}</span>
         </div>
         <div style="color:var(--text-dim);font-size:11px;margin-top:2px;">${this._actionVerb(b)}</div>
+        ${b.job ? `<div style="margin-top:5px;display:inline-block;font-size:10px;letter-spacing:1px;color:#0c0e14;background:${b.id===s.leaderId?'#e8c87a':'var(--gold-dim)'};padding:2px 7px;border-radius:3px;">${b.id===s.leaderId?'👑 LEADER':b.job.toUpperCase()}</div>` : ''}
       </div>
       <div style="padding:10px 14px;">
         ${this._bar('Hunger', b.hunger, '#c87a4a')}
@@ -255,8 +270,11 @@ export class HUD {
 
   _actionVerb(b) {
     const verbs = {
-      resting: 'at rest', foraging: 'foraging for food', eating: 'eating', sleeping: 'sleeping',
+      resting: 'at rest', foraging: 'foraging for food', eating: 'eating', sleeping: 'asleep',
       talking: 'with others', courting: 'courting', wandering: 'wandering', seeking: 'following a strange urge', grieving: 'grieving',
+      'chopping wood': 'chopping wood', 'mining stone': 'mining stone', hunting: 'hunting game',
+      hauling: 'hauling goods home', building: 'building a home', farming: 'working the fields',
+      playing: 'playing', leading: 'leading the people',
     };
     return (verbs[b.action] || b.action) + '.';
   }

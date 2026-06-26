@@ -108,6 +108,9 @@ export class Renderer {
       sleeping: ['💤', '#5a78b0'], resting: ['💤', '#5a78b0'],
       talking: ['💬', '#8a6ab8'], courting: ['❤', '#c05a7a'],
       wandering: ['•', '#6a6a6a'], seeking: ['✨', '#d8b85a'], grieving: ['🖤', '#4a4a4a'],
+      'chopping wood': ['🪓', '#8a6a3a'], 'mining stone': ['⛏', '#7a7a82'], hunting: ['🏹', '#9a5a3a'],
+      hauling: ['📦', '#a07a4a'], building: ['🔨', '#b08040'], farming: ['🌾', '#caa24a'],
+      playing: ['🙂', '#7aa0c0'], leading: ['👑', '#d8b85a'],
     };
     this.bubbleMats = {};
     for (const k in B) {
@@ -144,14 +147,15 @@ export class Renderer {
 
   // ---- the village physically grows as the tribe discovers things ----
   updateStructures() {
-    const tech = this.sim.tech, home = this.sim.home, pop = this.sim.population;
+    const tech = this.sim.tech, home = this.sim.home;
     if (tech.includes('fire') && !this.campfire) this._buildCampfire(home);
-    if (tech.includes('shelter')) {
-      const want = Math.min(14, Math.floor(pop / 3));
-      while (this.huts.length < want) this._addHut(home, this.huts.length);
+    // huts are built by the tribe's builders — render one mesh per sim hut
+    while (this.huts.length < this.sim.huts.length) {
+      this._addHutMesh(this.sim.huts[this.huts.length], this.huts.length);
     }
     if (tech.includes('ritual') && !this.totem) this._buildTotem(home);
-    if (tech.includes('farming') && !this.farms) this._buildFarms(home);
+    // farm patches follow sim.farms
+    if (this.sim.farms.length && !this.farms) this._buildFarmsFromSim();
   }
   _buildCampfire(home) {
     const g = new THREE.Group();
@@ -170,15 +174,13 @@ export class Renderer {
     this.structGroup.add(g);
     this.campfire = { group: g, flame: g.userData.flame || null, light };
   }
-  _addHut(home, i) {
-    const ang = (i / 8) * Math.PI * 2 + 0.6, r = 7 + Math.floor(i / 8) * 4;
-    let x = home.x + Math.cos(ang) * r, z = home.z + Math.sin(ang) * r;
-    if (!this.sim.world.isLand(x, z)) { x = home.x; z = home.z; }
-    const y = this.sim.world.heightAt(x, z);
+  _addHutMesh(hut, i) {
+    const x = hut.x, z = hut.z, y = hut.y;
+    const ang = (i / 6) * Math.PI * 2 + 0.7;
     const g = new THREE.Group();
     if (this._has('hut')) {
       const h = this.assets.clone('hut');
-      h.scale.multiplyScalar(0.85 + Math.random() * 0.3);
+      h.scale.multiplyScalar(0.85 + (i % 5) * 0.06);
       g.add(h);
     } else {
       const wall = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.6, 2.2),
@@ -207,36 +209,56 @@ export class Renderer {
   }
   _scatterRocks() {
     if (!this._has('rock')) return;
-    const { world } = this.sim, n = world.seg;
-    const m = new THREE.Matrix4(), sv = new THREE.Vector3(), pts = [];
-    for (let iy = 0; iy < n; iy += 3) for (let ix = 0; ix < n; ix += 3) {
-      const id = world.idx(ix, iy), bm = world.biome[id];
-      if ((bm === 4 || bm === 2) && Math.random() < 0.04) {
-        pts.push([(ix / n - 0.5) * WORLD.SIZE, world.h[id], (iy / n - 0.5) * WORLD.SIZE]);
-      }
-    }
+    const pts = this.sim.world.rocks;
+    if (!pts.length) return;
+    const m = new THREE.Matrix4(), sv = new THREE.Vector3();
     const { geometry, material } = this.assets.instanced('rock');
     const rocks = new THREE.InstancedMesh(geometry, material, pts.length);
     rocks.castShadow = true; rocks.receiveShadow = true;
     pts.forEach((p, i) => {
-      const s = 0.6 + Math.random() * 1.1;
-      m.makeRotationY(Math.random() * Math.PI * 2); m.scale(sv.set(s, s, s)); m.setPosition(p[0], p[1], p[2]);
+      const s = p.s || 1;
+      m.makeRotationY((i * 1.7) % (Math.PI * 2)); m.scale(sv.set(s, s, s)); m.setPosition(p.x, p.y, p.z);
       rocks.setMatrixAt(i, m);
     });
     this.scene.add(rocks);
   }
-  _buildFarms(home) {
+  _buildFarmsFromSim() {
     this.farms = new THREE.Group();
     const mat = new THREE.MeshStandardMaterial({ color: 0x6a5a2a, roughness: 1 });
-    for (let i = 0; i < 5; i++) {
-      const ang = i / 5 * Math.PI * 2, r = 16 + i;
-      let x = home.x + Math.cos(ang) * r, z = home.z + Math.sin(ang) * r;
-      if (!this.sim.world.isLand(x, z)) continue;
+    for (const f of this.sim.farms) {
       const patch = new THREE.Mesh(new THREE.BoxGeometry(4, 0.15, 4), mat);
-      patch.position.set(x, this.sim.world.heightAt(x, z) + 0.1, z);
+      patch.position.set(f.x, f.y + 0.1, f.z);
       this.farms.add(patch);
     }
     this.structGroup.add(this.farms);
+  }
+
+  // ---- deer (fauna) ----
+  _makeDeer() {
+    const g = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color: 0x8a6a44, roughness: 0.9 });
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 0.7, 4, 8), mat);
+    body.rotation.z = Math.PI / 2; body.position.y = 1.0; body.castShadow = true; g.add(body);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, 0.7, 6), mat);
+    neck.position.set(0.55, 1.35, 0); neck.rotation.z = -0.6; g.add(neck);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), mat);
+    head.position.set(0.78, 1.6, 0); g.add(head);
+    for (const dx of [-0.3, 0.3]) for (const dz of [-0.18, 0.18]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.0, 4), mat);
+      leg.position.set(dx, 0.5, dz); g.add(leg);
+    }
+    this.scene.add(g);
+    return g;
+  }
+  syncFauna() {
+    if (!this.deerMeshes) this.deerMeshes = [];
+    const fauna = this.sim.fauna;
+    while (this.deerMeshes.length < fauna.length) this.deerMeshes.push(this._makeDeer());
+    for (let i = 0; i < fauna.length; i++) {
+      const d = fauna[i], g = this.deerMeshes[i];
+      g.visible = d.alive;
+      if (d.alive) { g.position.set(d.x, d.y, d.z); g.rotation.y = -Math.atan2(d.tz - d.z, d.tx - d.x); }
+    }
   }
 
   spawnEffect(x, z, color, radius) {
@@ -329,33 +351,19 @@ export class Renderer {
   }
 
   _buildTrees() {
-    const { world } = this.sim;
-    const positions = [];
-    // scatter trees on forest tiles
-    const n = world.seg;
-    for (let iy = 0; iy < n; iy += 2) {
-      for (let ix = 0; ix < n; ix += 2) {
-        const id = world.idx(ix, iy);
-        if (world.biome[id] === BIOME.FOREST && Math.random() < 0.18) {
-          const x = (ix / n - 0.5) * WORLD.SIZE, z = (iy / n - 0.5) * WORLD.SIZE;
-          positions.push([x, world.h[id], z]);
-        }
-      }
-    }
+    const positions = this.sim.world.trees; // shared harvestable tree data
     const m = new THREE.Matrix4(), sv = new THREE.Vector3();
     if (this._has('tree')) {
-      // generated GLB tree, instanced for cheap forests
       const { geometry, material } = this.assets.instanced('tree');
       const trees = new THREE.InstancedMesh(geometry, material, positions.length);
       trees.castShadow = true;
       positions.forEach((p, i) => {
-        const s = 0.75 + Math.random() * 0.6;
-        m.makeRotationY(Math.random() * Math.PI * 2);
-        m.scale(sv.set(s, s, s));
-        m.setPosition(p[0], p[1], p[2]);
+        const s = p.s || 1;
+        m.makeRotationY((i * 2.3) % (Math.PI * 2)); m.scale(sv.set(s, s, s)); m.setPosition(p.x, p.y, p.z);
         trees.setMatrixAt(i, m);
       });
       this.scene.add(trees);
+      this.treeMesh = trees;
       return;
     }
     const trunkGeo = new THREE.CylinderGeometry(0.18, 0.28, 1.6, 5);
@@ -366,10 +374,10 @@ export class Renderer {
     const leaves = new THREE.InstancedMesh(leafGeo, leafMat, positions.length);
     leaves.castShadow = true;
     positions.forEach((p, i) => {
-      const s = 0.7 + Math.random() * 0.7;
-      m.makeTranslation(p[0], p[1] + 0.8 * s, p[2]); m.scale(new THREE.Vector3(s, s, s));
+      const s = (p.s || 1) * 0.9;
+      m.makeTranslation(p.x, p.y + 0.8 * s, p.z); m.scale(new THREE.Vector3(s, s, s));
       trunks.setMatrixAt(i, m);
-      m.makeTranslation(p[0], p[1] + 2.4 * s, p[2]); m.scale(new THREE.Vector3(s, s, s));
+      m.makeTranslation(p.x, p.y + 2.4 * s, p.z); m.scale(new THREE.Vector3(s, s, s));
       leaves.setMatrixAt(i, m);
     });
     this.scene.add(trunks); this.scene.add(leaves);
@@ -559,6 +567,7 @@ export class Renderer {
 
   update(dt) {
     this.syncBeings();
+    this.syncFauna();
     this.updateStructures();
     // bush berry visibility
     for (const g of this.bushMeshes) g.userData.berry.visible = g.userData.bush.berries > 0;

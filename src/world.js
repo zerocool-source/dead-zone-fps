@@ -1,4 +1,5 @@
-// Procedural island: value-noise heightmap + radial falloff, biomes, and food resources.
+// Procedural island: value-noise heightmap + radial falloff, biomes, and resources
+// (food bushes, harvestable trees for wood, rock clusters for stone).
 import { WORLD, FOOD } from './config.js';
 
 export const BIOME = {
@@ -13,8 +14,12 @@ export class World {
     this.h = new Float32Array((this.seg + 1) * (this.seg + 1)); // heights
     this.biome = new Uint8Array((this.seg + 1) * (this.seg + 1));
     this.bushes = [];
+    this.trees = [];     // {x,z,y, wood, max, regrow}
+    this.rocks = [];     // {x,z,y, stone, max, regrow}
     this._gen();
     this._scatterFood();
+    this._scatterTrees();
+    this._scatterRocks();
   }
 
   idx(ix, iy) { return iy * (this.seg + 1) + ix; }
@@ -122,6 +127,33 @@ export class World {
           berries: this.rng.int(2, FOOD.BUSH_MAX),
           max: FOOD.BUSH_MAX, regrow: 0,
         });
+      }
+    }
+  }
+
+  _scatterTrees() {
+    const n = this.seg;
+    for (let iy = 0; iy < n; iy += 2) {
+      for (let ix = 0; ix < n; ix += 2) {
+        const id = this.idx(ix, iy);
+        if (this.biome[id] === BIOME.FOREST && this.rng.chance(0.16)) {
+          const x = (ix / n - 0.5) * this.size, z = (iy / n - 0.5) * this.size;
+          this.trees.push({ x, z, y: this.h[id], wood: 8, max: 8, regrow: 0, s: this.rng.range(0.75, 1.35) });
+        }
+      }
+    }
+  }
+
+  _scatterRocks() {
+    const n = this.seg;
+    for (let iy = 0; iy < n; iy += 3) {
+      for (let ix = 0; ix < n; ix += 3) {
+        const id = this.idx(ix, iy);
+        const bm = this.biome[id];
+        if ((bm === BIOME.ROCK || bm === BIOME.GRASS) && this.rng.chance(bm === BIOME.ROCK ? 0.08 : 0.02)) {
+          const x = (ix / n - 0.5) * this.size, z = (iy / n - 0.5) * this.size;
+          this.rocks.push({ x, z, y: this.h[id], stone: 10, max: 10, regrow: 0, s: this.rng.range(0.6, 1.6) });
+        }
       }
     }
   }

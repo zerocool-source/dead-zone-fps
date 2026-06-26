@@ -1,7 +1,7 @@
 // A Being ("bean") — an autonomous agent. Needs + personality + memory + relationships
 // + a utility-AI brain. Architected so a promoted being can later defer to an LLM "soul"
 // (see decide(): the hook is `this.soul`).
-import { NEEDS, LIFE } from './config.js';
+import { NEEDS, LIFE, RES, DAYTIME } from './config.js';
 import { BIOME } from './world.js';
 import { makeName } from './names.js';
 
@@ -10,6 +10,8 @@ let NEXT_ID = 1;
 export const ACTION = {
   IDLE: 'resting', FORAGE: 'foraging', EAT: 'eating', REST: 'sleeping',
   SOCIAL: 'talking', MATE: 'courting', WANDER: 'wandering', SEEK: 'seeking', GRIEVE: 'grieving',
+  CHOP: 'chopping wood', MINE: 'mining stone', HUNT: 'hunting', HAUL: 'hauling', BUILD: 'building',
+  FARM: 'farming', PLAY: 'playing', LEAD: 'leading',
 };
 
 export class Being {
@@ -53,6 +55,9 @@ export class Being {
 
     this.action = ACTION.IDLE;
     this.actTarget = null;                     // {kind, ref}
+    this.job = opts.job || null;               // assigned role (forager/hunter/woodcutter/...)
+    this.carrying = null;                      // {type:'food'|'wood'|'stone', amount}
+    this.homeHut = null;                       // assigned hut to sleep in
     this.inspiration = null;                   // god-planted urge {kind, x, z, ttl}
     this.deathAge = LIFE.MAX_AGE + rng.gauss(0, LIFE.DEATH_AGE_VARIANCE);
 
@@ -128,57 +133,117 @@ export class Being {
     this._resolve(dDays, sim);
   }
 
+  // Daily routine: survival needs first, then time-of-day drives work / rest / social.
   _utilityDecide(sim) {
-    const t = this.traits;
-    const scores = [];
-    // EAT
-    scores.push([ACTION.FORAGE, (this.hunger / 100) ** 1.5 * 1.3]);
-    // REST
-    scores.push([ACTION.REST, ((100 - this.energy) / 100) ** 1.6 * (this.stage === 'elder' ? 1.2 : 1.0)]);
-    // SOCIAL
-    const near = sim.neighbors(this, 18, true);
-    scores.push([ACTION.SOCIAL, ((100 - this.social) / 100) * (0.5 + t.social * 0.5) * (near.length ? 1.1 : 0.15)]);
-    // MATE
-    if (this.fertile && !this.gestating && this._day - this.lastMateDay > LIFE.MATE_COOLDOWN_DAYS
-        && this.hunger < 60 && this.energy > 35) {
-      const m = sim.findMate(this);
-      scores.push([ACTION.MATE, m ? 0.7 + this.bondTo(m.id) / 250 : 0]);
-    }
-    // INSPIRATION (god nudge) — weighted by trust
-    if (this.inspiration) scores.push([ACTION.SEEK, 0.55 + this.trust * 0.9]);
-    // WANDER / explore
-    scores.push([ACTION.WANDER, 0.12 + Math.max(0, t.curious) * 0.3]);
+    const tod = sim.day % 1;                       // 0..1 within the day
+    const night = tod >= DAYTIME.SLEEP || tod < DAYTIME.DAWN;
 
-    scores.sort((a, b) => b[1] - a[1]);
-    const chosen = scores[0][0];
-    this._setupAction(chosen, sim);
-    return chosen;
+    // god nudge can interrupt
+    if (this.inspiration && this.rng.chance(0.4 + this.trust * 0.5)) {
+      this.tx = this.inspiration.x; this.tz = this.inspiration.z;
+      this.actTarget = { kind: 'inspire' }; return ACTION.SEEK;
+    }
+    // survival overrides
+    if (this.hunger > 78) return this._goEat(sim);
+    if (this.energy < 16 || night) return this._goSleep(sim);
+
+    // children play & learn; elders advise near home
+    if (this.stage === 'child') return this._goPlay(sim);
+
+    // work hours
+    if (tod < DAYTIME.WORK_END) {
+      if (this.stage === 'elder' && this.rng.chance(0.5)) return this._goSocialize(sim);
+      return this._doJob(sim);
+    }
+    // dusk — eat, bond, court, drift home
+    if (this.hunger > 45) return this._goEat(sim);
+    if (this.fertile && !this.gestating && this._day - this.lastMateDay > LIFE.MATE_COOLDOWN_DAYS
+        && this.hunger < 60 && this.energy > 30 && this.rng.chance(0.4)) {
+      const m = sim.findMate(this);
+      if (m) { this.actTarget = { kind: 'mate', ref: m }; this.tx = m.x; this.tz = m.z; return ACTION.MATE; }
+    }
+    if (this.social < 60) return this._goSocialize(sim);
+    return this._goSleep(sim);
   }
 
-  _setupAction(action, sim) {
-    this.actTarget = null;
-    if (action === ACTION.FORAGE) {
-      const bush = sim.nearestBush(this.x, this.z);
-      if (bush) { this.actTarget = { kind: 'bush', ref: bush }; this.tx = bush.x; this.tz = bush.z; }
-      else { this.action = ACTION.WANDER; this._wanderTarget(sim); }
-    } else if (action === ACTION.SOCIAL) {
-      const friend = sim.nearestNeighbor(this, 24, true);
-      if (friend) { this.actTarget = { kind: 'being', ref: friend }; this.tx = friend.x; this.tz = friend.z; }
-      else this._wanderTarget(sim);
-    } else if (action === ACTION.MATE) {
-      const m = sim.findMate(this);
-      if (m) { this.actTarget = { kind: 'mate', ref: m }; this.tx = m.x; this.tz = m.z; }
-      else { this.action = ACTION.WANDER; this._wanderTarget(sim); }
-    } else if (action === ACTION.SEEK && this.inspiration) {
-      this.tx = this.inspiration.x; this.tz = this.inspiration.z;
-      this.actTarget = { kind: 'inspire' };
-    } else if (action === ACTION.REST) {
-      this.actTarget = { kind: 'rest' };
-      const home = sim.home;
-      this.tx = home.x + this.rng.range(-6, 6); this.tz = home.z + this.rng.range(-6, 6);
-    } else {
-      this._wanderTarget(sim);
+  // ---- job behaviour: gather a resource, then haul it to the storehouse ----
+  _doJob(sim) {
+    if (this.carrying) return this._goHaul(sim);
+    switch (this.job) {
+      case 'woodcutter': return this._goGather(sim, sim.nearestTree(this.x, this.z), 'wood', ACTION.CHOP);
+      case 'miner':      return this._goGather(sim, sim.nearestRock(this.x, this.z), 'stone', ACTION.MINE);
+      case 'hunter':     return this._goHunt(sim);
+      case 'farmer':     return this._goFarm(sim);
+      case 'builder':    return this._goBuild(sim);
+      case 'leader':     return this._goLead(sim);
+      case 'forager':
+      default:           return this._goGather(sim, sim.nearestBush(this.x, this.z), 'food', ACTION.FORAGE);
     }
+  }
+
+  _goGather(sim, node, type, action) {
+    if (!node) { this._wanderTarget(sim); return ACTION.WANDER; }
+    this.actTarget = { kind: 'gather', ref: node, type };
+    this.tx = node.x; this.tz = node.z; return action;
+  }
+  _goHunt(sim) {
+    const deer = sim.nearestDeer(this.x, this.z);
+    if (!deer) { this._wanderTarget(sim); return ACTION.WANDER; }
+    this.actTarget = { kind: 'hunt', ref: deer };
+    this.tx = deer.x; this.tz = deer.z; return ACTION.HUNT;
+  }
+  _goFarm(sim) {
+    const plot = sim.nearestFarm(this.x, this.z);
+    if (!plot) return this._goGather(sim, sim.nearestBush(this.x, this.z), 'food', ACTION.FORAGE);
+    this.actTarget = { kind: 'gather', ref: plot, type: 'food' };
+    this.tx = plot.x; this.tz = plot.z; return ACTION.FARM;
+  }
+  _goBuild(sim) {
+    const site = sim.buildSite();
+    if (!site) { // nothing to build → help cut wood
+      return this._goGather(sim, sim.nearestTree(this.x, this.z), 'wood', ACTION.CHOP);
+    }
+    this.actTarget = { kind: 'build', ref: site };
+    this.tx = site.x; this.tz = site.z; return ACTION.BUILD;
+  }
+  _goLead(sim) {
+    // a leader walks the village, lifting spirits and binding the people together
+    const friend = sim.nearestNeighbor(this, 30, true);
+    if (friend) { this.actTarget = { kind: 'being', ref: friend }; this.tx = friend.x; this.tz = friend.z; }
+    else this._wanderTarget(sim);
+    return ACTION.LEAD;
+  }
+  _goHaul(sim) {
+    const s = sim.storePos();
+    this.actTarget = { kind: 'haul' }; this.tx = s.x; this.tz = s.z; return ACTION.HAUL;
+  }
+  _goEat(sim) {
+    if (sim.res.food >= RES.EAT_FROM_STORE) {
+      const s = sim.storePos();
+      this.actTarget = { kind: 'eatstore' }; this.tx = s.x; this.tz = s.z; return ACTION.EAT;
+    }
+    const bush = sim.nearestBush(this.x, this.z);
+    if (bush) { this.actTarget = { kind: 'eatbush', ref: bush }; this.tx = bush.x; this.tz = bush.z; return ACTION.FORAGE; }
+    this._wanderTarget(sim); return ACTION.WANDER;
+  }
+  _goSleep(sim) {
+    const h = this.homeHut || sim.home;
+    this.actTarget = { kind: 'sleep' };
+    this.tx = h.x + this.rng.range(-2.5, 2.5); this.tz = h.z + this.rng.range(-2.5, 2.5);
+    return ACTION.REST;
+  }
+  _goSocialize(sim) {
+    const friend = sim.nearestNeighbor(this, 26, true);
+    if (friend) { this.actTarget = { kind: 'being', ref: friend }; this.tx = friend.x; this.tz = friend.z; return ACTION.SOCIAL; }
+    this._wanderTarget(sim); return ACTION.WANDER;
+  }
+  _goPlay(sim) {
+    // children stay near the camp, play, and slowly learn
+    if (this.rng.chance(0.5)) { const f = sim.nearestNeighbor(this, 16, true); if (f) { this.actTarget = { kind: 'being', ref: f }; this.tx = f.x; this.tz = f.z; return ACTION.SOCIAL; } }
+    const h = this.homeHut || sim.home;
+    this.actTarget = { kind: 'wander' };
+    this.tx = h.x + this.rng.range(-7, 7); this.tz = h.z + this.rng.range(-7, 7);
+    return ACTION.PLAY;
   }
 
   _wanderTarget(sim) {
@@ -207,25 +272,59 @@ export class Being {
 
   _resolve(dDays, sim) {
     if (!this.actTarget) return;
-    const reached = Math.hypot(this.tx - this.x, this.tz - this.z) < 1.4;
+    const reached = Math.hypot(this.tx - this.x, this.tz - this.z) < 1.6;
     const k = this.actTarget.kind;
 
-    if (k === 'bush' && reached) {
-      const bush = this.actTarget.ref;
-      if (bush.berries > 0) {
-        // eat enough to mostly sate (up to 2 berries), don't strip the whole bush
-        let eaten = 0;
-        while (bush.berries > 0 && eaten < 2 && this.hunger > 12) {
-          bush.berries -= 1; eaten += 1;
-          this.hunger = Math.max(0, this.hunger - NEEDS.EAT_GAIN * 0.55);
+    if (k === 'gather' && reached) {
+      const node = this.actTarget.ref, type = this.actTarget.type;
+      const avail = type === 'food' ? (node.berries ?? node.yield ?? 0) : node[type] ?? 0;
+      if (avail > 0) {
+        const take = Math.min(RES.CARRY, avail, type === 'food' ? (node.berries ?? node.yield) : node[type]);
+        if (type === 'food') { if (node.berries != null) node.berries -= take; else node.yield -= take; }
+        else node[type] -= take;
+        this.carrying = { type, amount: take * (type === 'food' ? RES.FOOD_PER_BERRY : 1) };
+        this._skillUp(this.job);
+      }
+      this.actTarget = null; this._think = 0;
+    } else if (k === 'hunt' && reached) {
+      const deer = this.actTarget.ref;
+      if (deer.alive) {
+        const ok = this.rng.chance(0.55 + this.skills.forage * 0.3);
+        if (ok) {
+          deer.alive = false; deer.respawn = sim.FAUNA_RESPAWN;
+          this.carrying = { type: 'food', amount: sim.DEER_FOOD };
+          sim.res.wood += 0; // hides could be tracked later
+          this._skillUp('hunter');
+          if (this.rng.chance(0.4)) this.remember('hunt', `brought down a deer for the ${sim.tribeName}`, 2);
         }
-        this.skills.forage = Math.min(1, this.skills.forage + 0.01);
+      }
+      this.actTarget = null; this._think = 0;
+    } else if (k === 'haul' && reached) {
+      if (this.carrying) { sim.deposit(this.carrying.type, this.carrying.amount); this.carrying = null; }
+      this.actTarget = null; this._think = 0;
+    } else if (k === 'build' && reached) {
+      sim.tryBuild(this.actTarget.ref, this);
+      this.actTarget = null; this._think = this.rng.range(0.3, 0.6);
+    } else if (k === 'eatstore' && reached) {
+      if (sim.res.food >= RES.EAT_FROM_STORE) {
+        sim.res.food -= RES.EAT_FROM_STORE;
+        this.hunger = Math.max(0, this.hunger - NEEDS.EAT_GAIN);
         this.action = ACTION.EAT;
-        this.actTarget = null; this._think = this.rng.range(0.2, 0.5);
-      } else { this.actTarget = null; this._think = 0; }
-    } else if (k === 'rest') {
-      this.energy = Math.min(100, this.energy + NEEDS.REST_GAIN * dDays * 2);
-      if (this.energy > 92) { this.actTarget = null; this._think = 0; }
+      }
+      this.actTarget = null; this._think = this.rng.range(0.2, 0.5);
+    } else if (k === 'eatbush' && reached) {
+      const bush = this.actTarget.ref;
+      let eaten = 0;
+      while (bush.berries > 0 && eaten < 2 && this.hunger > 12) {
+        bush.berries -= 1; eaten += 1;
+        this.hunger = Math.max(0, this.hunger - NEEDS.EAT_GAIN * 0.55);
+      }
+      this.action = ACTION.EAT; this.actTarget = null; this._think = this.rng.range(0.2, 0.5);
+    } else if (k === 'sleep') {
+      this.energy = Math.min(100, this.energy + NEEDS.REST_GAIN * dDays * 2.2);
+      if (this.energy > 94 && (sim.day % 1) > DAYTIME.DAWN && (sim.day % 1) < DAYTIME.SLEEP) {
+        this.actTarget = null; this._think = 0;
+      }
     } else if (k === 'being' && reached) {
       const other = this.actTarget.ref;
       if (other.alive) {
@@ -233,15 +332,15 @@ export class Being {
         other.social = Math.min(100, other.social + NEEDS.SOCIAL_GAIN * 0.6);
         const warmth = 2 + this.traits.kind * 2;
         this.bondWith(other.id, warmth); other.bondWith(this.id, warmth);
+        sim.onConverse(this, other);
         if (this.rng.chance(0.04)) this.remember('social', `shared a moment with ${other.name}`, 1);
       }
-      this.action = ACTION.SOCIAL; this.actTarget = null; this._think = this.rng.range(0.3, 0.7);
+      this.actTarget = null; this._think = this.rng.range(0.3, 0.7);
     } else if (k === 'mate' && reached) {
       const m = this.actTarget.ref;
       if (m.alive && m.fertile && this.fertile) sim.tryConceive(this, m);
       this.actTarget = null; this._think = this.rng.range(0.4, 0.8);
     } else if (k === 'inspire' && reached) {
-      // arriving where the god pointed: chance of insight / belief
       this.insight += 3; sim.addInsight(3);
       this.godAwareness = Math.min(1, this.godAwareness + 0.18);
       this.godMood = Math.min(1, this.godMood + 0.1);
@@ -251,6 +350,12 @@ export class Being {
     } else if (k === 'wander' && reached) {
       this.actTarget = null; this._think = 0;
     }
+  }
+
+  _skillUp(job) {
+    const k = job === 'woodcutter' || job === 'miner' || job === 'builder' ? 'craft'
+      : job === 'hunter' ? 'forage' : 'forage';
+    this.skills[k] = Math.min(1, (this.skills[k] || 0) + 0.008);
   }
 
   _checkLife(dDays, sim) {
