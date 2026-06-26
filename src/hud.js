@@ -7,6 +7,7 @@ const TOOLS = [
   { id: 'inspire', icon: '✨', name: 'Inspire', cost: GOD.COST_INSPIRE, hint: 'Click a being, then a place — plant an urge.' },
   { id: 'bless',   icon: '🌟', name: 'Bless',   cost: GOD.COST_BLESS, hint: 'Click the land — food, healing, devotion.' },
   { id: 'smite',   icon: '🔥', name: 'Smite',   cost: GOD.COST_SMITE, hint: 'Click the land — fire and terror.' },
+  { id: 'shape',   icon: '⛰️', name: 'Shape Land', cost: GOD.COST_SHAPE, hint: 'Click to raise the land — hold Shift to lower it.' },
   { id: 'possess', icon: '👁', name: 'Possess', cost: 0, hint: 'Click a being — walk beside their life.' },
 ];
 

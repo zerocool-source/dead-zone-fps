@@ -17,6 +17,9 @@ let inspireSource = null;     // first-click being for the Inspire two-step
 let possessed = null;
 const keys = new Set();
 
+// expose for debugging / console tinkering
+window.AEON = { sim, god, renderer, hud };
+
 // ---------- boot ----------
 function boot() {
   renderer.mount(document.body);
@@ -106,6 +109,14 @@ function handleClick(ndc) {
     if (ok) renderer.spawnEffect(g.x, g.z, tool === 'bless' ? 0x9fe0a0 : 0xff6a2a, tool === 'bless' ? 26 : 16);
     else hud.message('Not enough faith.');
     if (tool === 'smite') renderer.flash(0.5);
+    return;
+  }
+  if (tool === 'shape') {
+    const g = renderer.raycastGround(ndc);
+    if (!g) return;
+    const lower = keys.has('shift');
+    if (god.shape(g.x, g.z, lower)) { renderer.refreshTerrain(); renderer.spawnEffect(g.x, g.z, 0xc9b97a, 14); }
+    else hud.message('Not enough faith.');
   }
 }
 
@@ -113,7 +124,7 @@ function possess(b) {
   possessed = b; b.promoted = true;
   renderer.possessed = b;
   renderer.setSelected(b); hud.selectBeing(b); hud.setPossessed(b);
-  renderer.focusOn(b);
+  renderer.focusOn(b, true);
   sim.chronicle.add(sim.day, sim.year, '👁', `You descend into the life of ${b.name}.`, 'god');
 }
 function unpossess() {

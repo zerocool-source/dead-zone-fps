@@ -80,6 +80,23 @@ export class God {
     return true;
   }
 
+  // SHAPE — terraform: raise or lower the land itself.
+  shape(x, z, lower = false) {
+    if (!this.can(GOD.COST_SHAPE)) return false;
+    this._spend(GOD.COST_SHAPE);
+    this.sim.world.raise(x, z, GOD.SHAPE_RADIUS, lower ? -3.4 : 3.4);
+    // beings nearby feel the ground move
+    for (const b of this.sim.beings) {
+      if (Math.hypot(b.x - x, b.z - z) < GOD.SHAPE_RADIUS) {
+        b.godAwareness = Math.min(1, b.godAwareness + 0.15);
+        b.remember('marvel', lower ? 'saw the ground sink before their eyes' : 'saw a hill rise from flat earth', 3);
+      }
+    }
+    this.sim.chronicle.add(this.sim.day, this.sim.year, '⛰️',
+      lower ? 'You press the earth down, and the land obeys.' : 'You raise the earth, and a new hill is born.', 'god');
+    return true;
+  }
+
   get title() {
     if (this.miracles === 0) return 'The Silent One';
     if (this.disposition > 0.4) return 'The Gardener';

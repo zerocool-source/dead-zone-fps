@@ -68,6 +68,15 @@ export class Renderer {
     this._buildBushes();
     this._buildSelection();
 
+    this._initBubbles();
+    this._initLabel();
+    this.structGroup = new THREE.Group();
+    this.scene.add(this.structGroup);
+    this.huts = [];
+    this.campfire = null;
+    this.farms = null;
+    this._elev = 1;
+
     this.raycaster = new THREE.Raycaster();
     this.effects = [];
 
@@ -78,6 +87,109 @@ export class Renderer {
 
     window.addEventListener('resize', () => this._resize());
     return this;
+  }
+
+  // ---- thought bubbles: a glanceable icon of each being's current mind-state ----
+  _emojiTexture(emoji, bg) {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = bg; ctx.beginPath(); ctx.arc(32, 32, 28, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.font = '34px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fff'; ctx.fillText(emoji, 32, 35);
+    const t = new THREE.CanvasTexture(c); t.minFilter = THREE.LinearFilter; return t;
+  }
+  _initBubbles() {
+    const B = {
+      foraging: ['🍓', '#b8893a'], eating: ['🍖', '#b8893a'], hungry: ['🍗', '#c0502a'],
+      sleeping: ['💤', '#5a78b0'], resting: ['💤', '#5a78b0'],
+      talking: ['💬', '#8a6ab8'], courting: ['❤', '#c05a7a'],
+      wandering: ['•', '#6a6a6a'], seeking: ['✨', '#d8b85a'], grieving: ['🖤', '#4a4a4a'],
+    };
+    this.bubbleMats = {};
+    for (const k in B) {
+      this.bubbleMats[k] = new THREE.SpriteMaterial({ map: this._emojiTexture(B[k][0], B[k][1]), depthTest: false, transparent: true });
+    }
+  }
+  _bubbleKey(b) {
+    if (b.hunger > 88 && (b.action === 'foraging' || b.action === 'wandering')) return 'hungry';
+    if (b.inspiration) return 'seeking';
+    return this.bubbleMats[b.action] ? b.action : 'wandering';
+  }
+
+  _initLabel() {
+    this.labelSprite = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false, transparent: true }));
+    this.labelSprite.visible = false;
+    this.labelSprite.renderOrder = 999;
+    this.scene.add(this.labelSprite);
+    this._labelFor = null;
+  }
+  _setLabel(b) {
+    if (!b) { this.labelSprite.visible = false; this._labelFor = null; return; }
+    const text = b.name;
+    const c = document.createElement('canvas'); c.width = 256; c.height = 64;
+    const ctx = c.getContext('2d');
+    ctx.font = 'bold 30px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.strokeText(text, 128, 34);
+    ctx.fillStyle = '#e8c87a'; ctx.fillText(text, 128, 34);
+    if (this.labelSprite.material.map) this.labelSprite.material.map.dispose();
+    this.labelSprite.material.map = new THREE.CanvasTexture(c);
+    this.labelSprite.scale.set(8, 2, 1);
+    this.labelSprite.visible = true;
+    this._labelFor = b;
+  }
+
+  // ---- the village physically grows as the tribe discovers things ----
+  updateStructures() {
+    const tech = this.sim.tech, home = this.sim.home, pop = this.sim.population;
+    if (tech.includes('fire') && !this.campfire) this._buildCampfire(home);
+    if (tech.includes('shelter')) {
+      const want = Math.min(14, Math.floor(pop / 3));
+      while (this.huts.length < want) this._addHut(home, this.huts.length);
+    }
+    if (tech.includes('farming') && !this.farms) this._buildFarms(home);
+  }
+  _buildCampfire(home) {
+    const g = new THREE.Group();
+    const logs = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.7, 0.4, 8),
+      new THREE.MeshStandardMaterial({ color: 0x3a2a1a, roughness: 1 }));
+    logs.position.y = 0.2; g.add(logs);
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.4, 1.0, 7),
+      new THREE.MeshBasicMaterial({ color: 0xff7a2a, transparent: true, opacity: 0.92 }));
+    flame.position.y = 0.9; g.add(flame);
+    const light = new THREE.PointLight(0xff7a2a, 0, 26, 2); light.position.y = 1.2; g.add(light);
+    g.position.set(home.x, this.sim.world.heightAt(home.x, home.z), home.z);
+    this.structGroup.add(g);
+    this.campfire = { group: g, flame, light };
+  }
+  _addHut(home, i) {
+    const ang = (i / 8) * Math.PI * 2 + 0.6, r = 7 + Math.floor(i / 8) * 4;
+    let x = home.x + Math.cos(ang) * r, z = home.z + Math.sin(ang) * r;
+    if (!this.sim.world.isLand(x, z)) { x = home.x; z = home.z; }
+    const y = this.sim.world.heightAt(x, z);
+    const g = new THREE.Group();
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.6, 2.2),
+      new THREE.MeshStandardMaterial({ color: 0x8a6a44, roughness: 1 }));
+    wall.position.y = 0.8; wall.castShadow = true; g.add(wall);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(1.9, 1.3, 4),
+      new THREE.MeshStandardMaterial({ color: 0x5a3a22, roughness: 1 }));
+    roof.position.y = 2.25; roof.rotation.y = Math.PI / 4; roof.castShadow = true; g.add(roof);
+    g.position.set(x, y, z); g.rotation.y = this.sim.rng ? ang : 0;
+    this.structGroup.add(g);
+    this.huts.push(g);
+  }
+  _buildFarms(home) {
+    this.farms = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color: 0x6a5a2a, roughness: 1 });
+    for (let i = 0; i < 5; i++) {
+      const ang = i / 5 * Math.PI * 2, r = 16 + i;
+      let x = home.x + Math.cos(ang) * r, z = home.z + Math.sin(ang) * r;
+      if (!this.sim.world.isLand(x, z)) continue;
+      const patch = new THREE.Mesh(new THREE.BoxGeometry(4, 0.15, 4), mat);
+      patch.position.set(x, this.sim.world.heightAt(x, z) + 0.1, z);
+      this.farms.add(patch);
+    }
+    this.structGroup.add(this.farms);
   }
 
   spawnEffect(x, z, color, radius) {
@@ -255,7 +367,13 @@ export class Renderer {
     );
     halo.rotation.x = -Math.PI / 2; halo.position.y = bodyH + 1.05;
     g.add(halo);
-    g.userData = { being: b, head, body, halo, bodyH };
+    // thought bubble
+    const bubble = new THREE.Sprite(this.bubbleMats.wandering);
+    bubble.scale.set(0.9, 0.9, 0.9);
+    bubble.position.y = bodyH + 1.7;
+    bubble.renderOrder = 998;
+    g.add(bubble);
+    g.userData = { being: b, head, body, halo, bodyH, bubble, bubbleKey: 'wandering' };
     this.scene.add(g);
     return g;
   }
@@ -271,6 +389,11 @@ export class Renderer {
       g.userData.halo.material.opacity = Math.min(0.85, b.godAwareness);
       // walk bob
       if (b.moving) g.userData.body.position.y = g.userData.bodyH / 2 + 0.3 + Math.sin(performance.now() * 0.012 + b.id) * 0.06;
+      // thought bubble (LOD: hide when far to keep the view clean)
+      const key = this._bubbleKey(b);
+      if (key !== g.userData.bubbleKey) { g.userData.bubble.material = this.bubbleMats[key]; g.userData.bubbleKey = key; }
+      const dist = this.camera.position.distanceTo(g.position);
+      g.userData.bubble.visible = dist < 95;
     }
     // remove gone
     for (const [id, g] of this.beingMeshes) {
@@ -281,11 +404,11 @@ export class Renderer {
   setSelected(b) { this.selected = b; }
   clearSelection() { this.selected = null; this.selRing.visible = false; }
 
-  focusOn(b) {
+  focusOn(b, close = false) {
     if (!b) return;
     this.controls.target.set(b.x, b.y + 1, b.z);
-    const dist = 14;
-    this.camera.position.set(b.x + dist, b.y + dist * 0.7, b.z + dist);
+    const dist = close ? 7 : 14;
+    this.camera.position.set(b.x + dist, b.y + dist * (close ? 0.5 : 0.7), b.z + dist);
   }
 
   raycastBeing(ndc) {
@@ -320,6 +443,7 @@ export class Renderer {
     const warm = new THREE.Color(0xffd9a0), cool = new THREE.Color(0x6a86c0);
     this.sun.color.copy(cool).lerp(warm, Math.min(1, elev + 0.2));
     this.hemi.intensity = 0.25 + elev * 0.7;
+    this._elev = elev;
     const night = new THREE.Color(0x0a0d14), dusk = new THREE.Color(0x1a2336), day = new THREE.Color(0x9fc0e8);
     const skyc = elev < 0.25 ? night.clone().lerp(dusk, elev / 0.25) : dusk.clone().lerp(day, (elev - 0.25) / 0.75);
     this.scene.background.copy(skyc);
@@ -328,8 +452,27 @@ export class Renderer {
 
   update(dt) {
     this.syncBeings();
+    this.updateStructures();
     // bush berry visibility
     for (const g of this.bushMeshes) g.userData.berry.visible = g.userData.bush.berries > 0;
+
+    // campfire flicker, brighter at night
+    if (this.campfire) {
+      const night = 1 - this._elev;
+      const f = 0.7 + 0.3 * Math.sin(performance.now() * 0.02) + 0.15 * Math.sin(performance.now() * 0.057);
+      this.campfire.light.intensity = (1.2 + night * 2.6) * f;
+      this.campfire.flame.scale.y = 0.85 + 0.3 * f;
+      this.campfire.flame.material.opacity = 0.8 + 0.2 * Math.sin(performance.now() * 0.03);
+    }
+
+    // name label follows the possessed being, else the selected one
+    const labelTarget = (this.possessed && this.possessed.alive) ? this.possessed
+      : (this.selected && this.selected.alive ? this.selected : null);
+    if (labelTarget !== this._labelFor) this._setLabel(labelTarget);
+    if (this._labelFor) {
+      const g = this.beingMeshes.get(this._labelFor.id);
+      if (g) this.labelSprite.position.set(g.position.x, g.position.y + g.userData.bodyH + 2.6, g.position.z);
+    }
     // selection ring
     if (this.selected && this.selected.alive) {
       this.selRing.visible = true;
