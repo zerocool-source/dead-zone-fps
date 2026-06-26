@@ -16,13 +16,15 @@ const BIOME_COLOR = {
 };
 
 export class Renderer {
-  constructor(sim) {
+  constructor(sim, assets = null) {
     this.sim = sim;
+    this.assets = assets;        // AssetStore (may be null → primitive fallback)
     this.beingMeshes = new Map(); // id -> THREE.Group
     this.selected = null;
     this.possessed = null;
     this.tmp = new THREE.Vector3();
   }
+  _has(key) { return this.assets && this.assets.has(key); }
 
   mount(parent) {
     const w = window.innerWidth, h = window.innerHeight;
@@ -66,6 +68,7 @@ export class Renderer {
     this._buildWater();
     this._buildTrees();
     this._buildBushes();
+    this._scatterRocks();
     this._buildSelection();
 
     this._initBubbles();
@@ -147,20 +150,25 @@ export class Renderer {
       const want = Math.min(14, Math.floor(pop / 3));
       while (this.huts.length < want) this._addHut(home, this.huts.length);
     }
+    if (tech.includes('ritual') && !this.totem) this._buildTotem(home);
     if (tech.includes('farming') && !this.farms) this._buildFarms(home);
   }
   _buildCampfire(home) {
     const g = new THREE.Group();
-    const logs = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.7, 0.4, 8),
-      new THREE.MeshStandardMaterial({ color: 0x3a2a1a, roughness: 1 }));
-    logs.position.y = 0.2; g.add(logs);
-    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.4, 1.0, 7),
-      new THREE.MeshBasicMaterial({ color: 0xff7a2a, transparent: true, opacity: 0.92 }));
-    flame.position.y = 0.9; g.add(flame);
+    if (this._has('campfire')) {
+      g.add(this.assets.clone('campfire'));
+    } else {
+      const logs = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.7, 0.4, 8),
+        new THREE.MeshStandardMaterial({ color: 0x3a2a1a, roughness: 1 }));
+      logs.position.y = 0.2; g.add(logs);
+      const flame = new THREE.Mesh(new THREE.ConeGeometry(0.4, 1.0, 7),
+        new THREE.MeshBasicMaterial({ color: 0xff7a2a, transparent: true, opacity: 0.92 }));
+      flame.position.y = 0.9; g.add(flame); g.userData.flame = flame;
+    }
     const light = new THREE.PointLight(0xff7a2a, 0, 26, 2); light.position.y = 1.2; g.add(light);
     g.position.set(home.x, this.sim.world.heightAt(home.x, home.z), home.z);
     this.structGroup.add(g);
-    this.campfire = { group: g, flame, light };
+    this.campfire = { group: g, flame: g.userData.flame || null, light };
   }
   _addHut(home, i) {
     const ang = (i / 8) * Math.PI * 2 + 0.6, r = 7 + Math.floor(i / 8) * 4;
@@ -168,15 +176,54 @@ export class Renderer {
     if (!this.sim.world.isLand(x, z)) { x = home.x; z = home.z; }
     const y = this.sim.world.heightAt(x, z);
     const g = new THREE.Group();
-    const wall = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.6, 2.2),
-      new THREE.MeshStandardMaterial({ color: 0x8a6a44, roughness: 1 }));
-    wall.position.y = 0.8; wall.castShadow = true; g.add(wall);
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(1.9, 1.3, 4),
-      new THREE.MeshStandardMaterial({ color: 0x5a3a22, roughness: 1 }));
-    roof.position.y = 2.25; roof.rotation.y = Math.PI / 4; roof.castShadow = true; g.add(roof);
-    g.position.set(x, y, z); g.rotation.y = this.sim.rng ? ang : 0;
+    if (this._has('hut')) {
+      const h = this.assets.clone('hut');
+      h.scale.multiplyScalar(0.85 + Math.random() * 0.3);
+      g.add(h);
+    } else {
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.6, 2.2),
+        new THREE.MeshStandardMaterial({ color: 0x8a6a44, roughness: 1 }));
+      wall.position.y = 0.8; wall.castShadow = true; g.add(wall);
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(1.9, 1.3, 4),
+        new THREE.MeshStandardMaterial({ color: 0x5a3a22, roughness: 1 }));
+      roof.position.y = 2.25; roof.rotation.y = Math.PI / 4; roof.castShadow = true; g.add(roof);
+    }
+    g.position.set(x, y, z); g.rotation.y = ang;
     this.structGroup.add(g);
     this.huts.push(g);
+  }
+  _buildTotem(home) {
+    const x = home.x + 3.5, z = home.z + 3.5, y = this.sim.world.heightAt(x, z);
+    const g = new THREE.Group();
+    if (this._has('totem')) g.add(this.assets.clone('totem'));
+    else {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.5, 3.2, 6),
+        new THREE.MeshStandardMaterial({ color: 0x7a4a2a, roughness: 1 }));
+      pole.position.y = 1.6; pole.castShadow = true; g.add(pole);
+    }
+    g.position.set(x, y, z);
+    this.structGroup.add(g);
+    this.totem = g;
+  }
+  _scatterRocks() {
+    if (!this._has('rock')) return;
+    const { world } = this.sim, n = world.seg;
+    const m = new THREE.Matrix4(), sv = new THREE.Vector3(), pts = [];
+    for (let iy = 0; iy < n; iy += 3) for (let ix = 0; ix < n; ix += 3) {
+      const id = world.idx(ix, iy), bm = world.biome[id];
+      if ((bm === 4 || bm === 2) && Math.random() < 0.04) {
+        pts.push([(ix / n - 0.5) * WORLD.SIZE, world.h[id], (iy / n - 0.5) * WORLD.SIZE]);
+      }
+    }
+    const { geometry, material } = this.assets.instanced('rock');
+    const rocks = new THREE.InstancedMesh(geometry, material, pts.length);
+    rocks.castShadow = true; rocks.receiveShadow = true;
+    pts.forEach((p, i) => {
+      const s = 0.6 + Math.random() * 1.1;
+      m.makeRotationY(Math.random() * Math.PI * 2); m.scale(sv.set(s, s, s)); m.setPosition(p[0], p[1], p[2]);
+      rocks.setMatrixAt(i, m);
+    });
+    this.scene.add(rocks);
   }
   _buildFarms(home) {
     this.farms = new THREE.Group();
@@ -295,6 +342,22 @@ export class Renderer {
         }
       }
     }
+    const m = new THREE.Matrix4(), sv = new THREE.Vector3();
+    if (this._has('tree')) {
+      // generated GLB tree, instanced for cheap forests
+      const { geometry, material } = this.assets.instanced('tree');
+      const trees = new THREE.InstancedMesh(geometry, material, positions.length);
+      trees.castShadow = true;
+      positions.forEach((p, i) => {
+        const s = 0.75 + Math.random() * 0.6;
+        m.makeRotationY(Math.random() * Math.PI * 2);
+        m.scale(sv.set(s, s, s));
+        m.setPosition(p[0], p[1], p[2]);
+        trees.setMatrixAt(i, m);
+      });
+      this.scene.add(trees);
+      return;
+    }
     const trunkGeo = new THREE.CylinderGeometry(0.18, 0.28, 1.6, 5);
     const leafGeo = new THREE.ConeGeometry(1.4, 3.2, 7);
     const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4b3a26, roughness: 1 });
@@ -302,7 +365,6 @@ export class Renderer {
     const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, positions.length);
     const leaves = new THREE.InstancedMesh(leafGeo, leafMat, positions.length);
     leaves.castShadow = true;
-    const m = new THREE.Matrix4();
     positions.forEach((p, i) => {
       const s = 0.7 + Math.random() * 0.7;
       m.makeTranslation(p[0], p[1] + 0.8 * s, p[2]); m.scale(new THREE.Vector3(s, s, s));
@@ -315,18 +377,28 @@ export class Renderer {
 
   _buildBushes() {
     const { world } = this.sim;
+    const useGlb = this._has('bush');
     const geo = new THREE.IcosahedronGeometry(0.6, 0);
     this.bushMat = new THREE.MeshStandardMaterial({ color: 0x3a5a2a, roughness: 1 });
     this.berryMat = new THREE.MeshStandardMaterial({ color: 0x8a2240, emissive: 0x3a0814, roughness: 0.7 });
     this.bushMeshes = [];
     for (const bush of world.bushes) {
       const g = new THREE.Group();
-      const body = new THREE.Mesh(geo, this.bushMat);
-      body.castShadow = true;
-      g.add(body);
+      let berryY;
+      if (useGlb) {
+        const body = this.assets.clone('bush');
+        const s = 0.8 + (bush.berries / bush.max) * 0.3;
+        body.scale.multiplyScalar(s);
+        g.add(body); g.position.set(bush.x, bush.y, bush.z);
+        berryY = 1.1 * s + 0.1;
+      } else {
+        const body = new THREE.Mesh(geo, this.bushMat);
+        body.castShadow = true; g.add(body);
+        g.position.set(bush.x, bush.y + 0.5, bush.z);
+        berryY = 0.4;
+      }
       const berry = new THREE.Mesh(new THREE.SphereGeometry(0.18, 6, 6), this.berryMat);
-      berry.position.y = 0.4; g.add(berry);
-      g.position.set(bush.x, bush.y + 0.5, bush.z);
+      berry.position.y = berryY; g.add(berry);
       g.userData.bush = bush; g.userData.berry = berry;
       this.scene.add(g);
       this.bushMeshes.push(g);
@@ -344,22 +416,52 @@ export class Renderer {
     this.scene.add(ring);
   }
 
+  // which character model fits this being's sex + life stage (falls back to 'being')
+  _beingKey(b) {
+    let key = 'being';
+    if (b.stage === 'child') key = 'child';
+    else if (b.stage === 'elder') key = 'elder';
+    else if (b.sex === 'f') key = 'woman';
+    return this._has(key) ? key : (this._has('being') ? 'being' : null);
+  }
+
   _makeBeingMesh(b) {
     const g = new THREE.Group();
-    const col = new THREE.Color().setHSL(b.hue, 0.55, 0.55);
-    const bodyH = b.stage === 'child' ? 0.7 : 1.2;
-    const body = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.28, bodyH, 4, 8),
-      new THREE.MeshStandardMaterial({ color: col, roughness: 0.8 })
-    );
-    body.position.y = bodyH / 2 + 0.3; body.castShadow = true;
-    g.add(body);
-    const head = new THREE.Mesh(
-      new THREE.SphereGeometry(0.26, 12, 12),
-      new THREE.MeshStandardMaterial({ color: 0xe8c9a0, roughness: 0.7 })
-    );
-    head.position.y = bodyH + 0.7; head.castShadow = true;
-    g.add(head);
+    const key = this._beingKey(b);
+    // children/elders also a touch smaller even when a dedicated model exists
+    const stageScale = (key === 'being' || key === 'woman')
+      ? (b.stage === 'child' ? 0.62 : b.stage === 'elder' ? 0.9 : 1) : 1;
+    const scale = stageScale * b.build;
+    let body, bodyH;
+    if (key) {
+      // generated GLB character; tint slightly per-lineage so families read apart
+      body = this.assets.clone(key);
+      body.scale.multiplyScalar(scale);
+      body.traverse((o) => {
+        if (o.isMesh) {
+          o.castShadow = true;
+          o.material = o.material.clone();
+          if (o.material.color) o.material.color.offsetHSL((b.hue - 0.07), 0.05, 0);
+        }
+      });
+      bodyH = (this.assets.assets[key].height) * scale;
+      g.add(body);
+    } else {
+      const col = new THREE.Color().setHSL(b.hue, 0.55, 0.55);
+      bodyH = (b.stage === 'child' ? 0.7 : 1.2);
+      body = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.28, bodyH, 4, 8),
+        new THREE.MeshStandardMaterial({ color: col, roughness: 0.8 })
+      );
+      body.position.y = bodyH / 2 + 0.3; body.castShadow = true;
+      g.add(body);
+      const head = new THREE.Mesh(
+        new THREE.SphereGeometry(0.26, 12, 12),
+        new THREE.MeshStandardMaterial({ color: 0xe8c9a0, roughness: 0.7 })
+      );
+      head.position.y = bodyH + 0.7; head.castShadow = true;
+      g.add(head);
+    }
     // faith halo (hidden until devout)
     const halo = new THREE.Mesh(
       new THREE.RingGeometry(0.32, 0.42, 18),
@@ -373,7 +475,8 @@ export class Renderer {
     bubble.position.y = bodyH + 1.7;
     bubble.renderOrder = 998;
     g.add(bubble);
-    g.userData = { being: b, head, body, halo, bodyH, bubble, bubbleKey: 'wandering' };
+    const bodyBaseY = key ? 0 : (bodyH / 2 + 0.3);
+    g.userData = { being: b, body, halo, bodyH, bodyBaseY, bubble, bubbleKey: 'wandering', modelKey: key };
     this.scene.add(g);
     return g;
   }
@@ -384,11 +487,16 @@ export class Renderer {
       live.add(b.id);
       let g = this.beingMeshes.get(b.id);
       if (!g) { g = this._makeBeingMesh(b); this.beingMeshes.set(b.id, g); }
+      // a being that has aged into a new life stage gets re-bodied (child→adult→elder)
+      else if (g.userData.modelKey !== this._beingKey(b)) {
+        this.scene.remove(g);
+        g = this._makeBeingMesh(b); this.beingMeshes.set(b.id, g);
+      }
       g.position.set(b.x, b.y, b.z);
       g.rotation.y = -b.heading + Math.PI / 2 || 0;
       g.userData.halo.material.opacity = Math.min(0.85, b.godAwareness);
       // walk bob
-      if (b.moving) g.userData.body.position.y = g.userData.bodyH / 2 + 0.3 + Math.sin(performance.now() * 0.012 + b.id) * 0.06;
+      g.userData.body.position.y = g.userData.bodyBaseY + (b.moving ? Math.abs(Math.sin(performance.now() * 0.011 + b.id)) * 0.08 : 0);
       // thought bubble (LOD: hide when far to keep the view clean)
       const key = this._bubbleKey(b);
       if (key !== g.userData.bubbleKey) { g.userData.bubble.material = this.bubbleMats[key]; g.userData.bubbleKey = key; }
@@ -413,9 +521,8 @@ export class Renderer {
 
   raycastBeing(ndc) {
     this.raycaster.setFromCamera(ndc, this.camera);
-    const meshes = [];
-    for (const g of this.beingMeshes.values()) meshes.push(g.children[0], g.children[1]);
-    const hits = this.raycaster.intersectObjects(meshes, false);
+    const groups = [...this.beingMeshes.values()];
+    const hits = this.raycaster.intersectObjects(groups, true); // recurse into GLB meshes
     if (hits.length) {
       let o = hits[0].object;
       while (o && !(o.userData && o.userData.being)) o = o.parent;
@@ -461,8 +568,10 @@ export class Renderer {
       const night = 1 - this._elev;
       const f = 0.7 + 0.3 * Math.sin(performance.now() * 0.02) + 0.15 * Math.sin(performance.now() * 0.057);
       this.campfire.light.intensity = (1.2 + night * 2.6) * f;
-      this.campfire.flame.scale.y = 0.85 + 0.3 * f;
-      this.campfire.flame.material.opacity = 0.8 + 0.2 * Math.sin(performance.now() * 0.03);
+      if (this.campfire.flame) {
+        this.campfire.flame.scale.y = 0.85 + 0.3 * f;
+        this.campfire.flame.material.opacity = 0.8 + 0.2 * Math.sin(performance.now() * 0.03);
+      }
     }
 
     // name label follows the possessed being, else the selected one

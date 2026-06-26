@@ -56,8 +56,10 @@ export class Being {
     this.inspiration = null;                   // god-planted urge {kind, x, z, ttl}
     this.deathAge = LIFE.MAX_AGE + rng.gauss(0, LIFE.DEATH_AGE_VARIANCE);
 
-    // appearance (warm, legible, Sims-like) — hue from lineage seed
+    // appearance (warm, legible, Sims-like) — hue + build are heritable genes that
+    // drift across generations, so isolated lineages slowly diverge in look (concept §5.1)
     this.hue = opts.hue != null ? opts.hue : rng.range(0, 1);
+    this.build = opts.build != null ? Math.max(0.78, Math.min(1.25, opts.build)) : (1 + rng.gauss(0, 0.06));
     this.soul = null;                          // future: LLM reasoner for promoted beings
     this.promoted = false;
   }

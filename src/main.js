@@ -4,12 +4,13 @@ import { Sim } from './sim.js';
 import { God } from './god.js';
 import { Renderer } from './render.js';
 import { HUD } from './hud.js';
+import { AssetStore } from './assets.js';
 
 const seed = new URLSearchParams(location.search).get('seed') || 'pangaea-' + Math.floor(Math.random() * 1e6);
 
 const sim = new Sim(seed);
 const god = new God(sim);
-const renderer = new Renderer(sim);
+let renderer;            // created after assets load
 const hud = new HUD(sim, god);
 
 let tool = 'inspect';
@@ -21,14 +22,19 @@ const keys = new Set();
 window.AEON = { sim, god, renderer, hud };
 
 // ---------- boot ----------
-function boot() {
+async function boot() {
+  const status = document.getElementById('veil-status');
+  status.textContent = 'CARVING THE MESHES…';
+  const assets = await new AssetStore().load();   // GLBs (or graceful fallback)
+
+  renderer = new Renderer(sim, assets);
+  window.AEON.renderer = renderer;
   renderer.mount(document.body);
   // a couple of frames so terrain/beings exist before reveal
   renderer.syncBeings();
   renderer.update(0.016);
 
   const veil = document.getElementById('veil');
-  const status = document.getElementById('veil-status');
   const enter = document.getElementById('veil-enter');
   status.textContent = `${sim.tribeName} · seed “${seed}”`;
   status.classList.remove('loading');

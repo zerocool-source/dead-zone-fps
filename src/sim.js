@@ -148,14 +148,16 @@ export class Sim {
     for (const b of this.beings) {
       if (b.gestating && this.day >= b.gestating.dueDay) {
         const father = this.beings.find(x => x.id === b.gestating.fatherId);
-        const hue = (b.hue + (father ? father.hue : b.hue)) / 2 + this.rng.gauss(0, 0.01);
+        const hue = (b.hue + (father ? father.hue : b.hue)) / 2 + this.rng.gauss(0, 0.022);
         const traits = {};
         for (const k of ['brave', 'curious', 'kind', 'devout', 'social']) {
           const fa = b.traits[k], fb = father ? father.traits[k] : 0;
           traits[k] = Math.max(-1, Math.min(1, (fa + fb) / 2 + this.rng.gauss(0, 0.22)));
         }
+        const fb = father ? father.build : b.build;
+        const childBuild = (b.build + fb) / 2 + this.rng.gauss(0, 0.04); // heritable size, mutates
         const child = new Being(this.rng, b.x + this.rng.range(-1, 1), b.z + this.rng.range(-1, 1), {
-          age: 0, bornDay: this.day, traits, hue,
+          age: 0, bornDay: this.day, traits, hue, build: childBuild,
           parents: father ? [b.id, father.id] : [b.id],
           name: makeName(this.rng),
         });
