@@ -61,13 +61,17 @@ export const COMBAT = {
   HEAL_PER_DAY: 22,     // out-of-combat recovery
 };
 
-// fauna for hunting
+// fauna — prey and predators
 export const FAUNA = {
-  DEER_COUNT: 90,
-  DEER_FOOD: 14,        // food yield when caught
-  DEER_HIDE: 1,
   FLEE_RADIUS: 14,
   RESPAWN_DAYS: 4,
+  TYPES: {
+    // prey
+    deer: { count: 70, food: 14, speed: 9, health: 16, predator: false, biomes: ['grass', 'savanna', 'forest', 'tundra'] },
+    boar: { count: 22, food: 24, speed: 8, health: 42, predator: false, gore: 18, biomes: ['forest', 'jungle', 'savanna'] },
+    // predator — hunts lone beings
+    wolf: { count: 16, food: 7, speed: 13, health: 34, predator: true, attack: 16, sight: 30, biomes: ['forest', 'taiga', 'tundra', 'rock'] },
+  },
 };
 
 export const LIFE = {

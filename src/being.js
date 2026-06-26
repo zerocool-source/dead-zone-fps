@@ -147,6 +147,16 @@ export class Being {
       this.tx = this.inspiration.x; this.tz = this.inspiration.z;
       this.actTarget = { kind: 'inspire' }; return ACTION.SEEK;
     }
+    // danger: a predator stalks nearby
+    const beast = sim.nearestPredator(this, 16);
+    if (beast) {
+      if (this.job === 'warrior' || this.job === 'hunter' || this.traits.brave > 0.45) {
+        this.actTarget = { kind: 'attackBeast', ref: beast }; this.tx = beast.x; this.tz = beast.z; return ACTION.FIGHT;
+      }
+      const h = this.homeHut || (this.tribe ? this.tribe.home : sim.home);
+      if (this.rng.chance(0.1)) sim.voice(this, 'afraid');
+      this.actTarget = { kind: 'flee' }; this.tx = h.x; this.tz = h.z; return ACTION.FLEE;
+    }
     // danger: an enemy is near and my people are at war with theirs
     const enemy = sim.nearestEnemy(this, COMBAT.SIGHT);
     if (enemy) {
@@ -205,10 +215,10 @@ export class Being {
     this.tx = node.x; this.tz = node.z; return action;
   }
   _goHunt(sim) {
-    const deer = sim.nearestDeer(this.x, this.z);
-    if (!deer) { this._wanderTarget(sim); return ACTION.WANDER; }
-    this.actTarget = { kind: 'hunt', ref: deer };
-    this.tx = deer.x; this.tz = deer.z; return ACTION.HUNT;
+    const prey = sim.nearestPrey(this.x, this.z);
+    if (!prey) { this._wanderTarget(sim); return ACTION.WANDER; }
+    this.actTarget = { kind: 'hunt', ref: prey };
+    this.tx = prey.x; this.tz = prey.z; return ACTION.HUNT;
   }
   _goFarm(sim) {
     const plot = this.tribe ? sim.nearestFarm(this.tribe, this.x, this.z) : null;
@@ -314,14 +324,19 @@ export class Being {
       }
       this.actTarget = null; this._think = 0;
     } else if (k === 'hunt' && reached) {
-      const deer = this.actTarget.ref;
-      if (deer.alive) {
+      const prey = this.actTarget.ref;
+      if (prey.alive) {
         const ok = this.rng.chance(0.55 + this.skills.forage * 0.3);
         if (ok) {
-          deer.alive = false; deer.respawn = sim.FAUNA_RESPAWN;
-          this.carrying = { type: 'food', amount: sim.DEER_FOOD };
+          prey.alive = false; prey.respawn = sim.FAUNA_RESPAWN;
+          this.carrying = { type: 'food', amount: prey.def.food };
           this._skillUp('hunter');
-          if (this.rng.chance(0.4)) this.remember('hunt', `brought down a deer for the ${this.tribe ? this.tribe.name : 'tribe'}`, 2);
+          if (this.rng.chance(0.4)) this.remember('hunt', `brought down a ${prey.type} for the ${this.tribe ? this.tribe.name : 'tribe'}`, 2);
+        } else if (prey.def.gore && this.rng.chance(0.4)) {
+          // a cornered boar gores the hunter
+          this.health = Math.max(1, this.health - prey.def.gore);
+          this.remember('wound', `was gored by a boar and lived`, 3);
+          if (this.rng.chance(0.5)) sim.voice(this, 'afraid');
         }
       }
       this.actTarget = null; this._think = 0;
@@ -342,6 +357,22 @@ export class Being {
           if (foe.health <= 0) {
             foe.die('slain in battle', sim);
             if (this.tribe) this.remember('battle', `slew a foe of the ${this.tribe.name}`, 4);
+            this.actTarget = null; this._think = 0;
+          }
+        }
+      }
+    } else if (k === 'attackBeast') {
+      const beast = this.actTarget.ref;
+      if (!beast || !beast.alive) { this.actTarget = null; this._think = 0; }
+      else {
+        this.tx = beast.x; this.tz = beast.z;
+        if (Math.hypot(beast.x - this.x, beast.z - this.z) < COMBAT.RANGE + 0.8) {
+          this.action = ACTION.FIGHT;
+          beast.health -= COMBAT.DAMAGE * (0.6 + this.skills.forage + Math.max(0, this.build - 1)) * dDays * 6;
+          if (beast.health <= 0) {
+            beast.alive = false; beast.respawn = sim.FAUNA_RESPAWN;
+            if (beast.def.food) this.carrying = { type: 'food', amount: beast.def.food };
+            this.remember('battle', 'drove off a wolf', 2);
             this.actTarget = null; this._think = 0;
           }
         }

@@ -26,7 +26,6 @@ export class Sim {
     this.fauna = [];
     this.dead = [];
     this.births = 0; this.deaths = 0;
-    this.DEER_FOOD = FAUNA.DEER_FOOD;
     this.FAUNA_RESPAWN = FAUNA.RESPAWN_DAYS;
     this._jobTimer = 0;
     this.voices = new Voices(this);
@@ -81,9 +80,11 @@ export class Sim {
   }
 
   _seedFauna() {
-    for (let i = 0; i < FAUNA.DEER_COUNT; i++) {
-      const p = this.world.spawnPoint(this.rng);
-      this.fauna.push({ x: p.x, z: p.z, y: this.world.heightAt(p.x, p.z), tx: p.x, tz: p.z, alive: true, respawn: 0 });
+    for (const [type, def] of Object.entries(FAUNA.TYPES)) {
+      for (let i = 0; i < def.count; i++) {
+        const p = this.world.spawnInBiome(this.rng, this.rng.pick(def.biomes), [], 0) || this.world.spawnPoint(this.rng);
+        this.fauna.push({ type, def, x: p.x, z: p.z, y: this.world.heightAt(p.x, p.z), tx: p.x, tz: p.z, alive: true, respawn: 0, health: def.health });
+      }
     }
   }
 
@@ -206,15 +207,6 @@ export class Sim {
       if (!ok(n)) continue;
       const dx = n.x - x, dz = n.z - z, d = dx * dx + dz * dz;
       if (d < bd) { bd = d; best = n; }
-    }
-    return best;
-  }
-  nearestDeer(x, z) {
-    let best = null, bd = Infinity;
-    for (const d of this.fauna) {
-      if (!d.alive) continue;
-      const dx = d.x - x, dz = d.z - z, dd = dx * dx + dz * dz;
-      if (dd < bd) { bd = dd; best = d; }
     }
     return best;
   }
@@ -416,14 +408,27 @@ export class Sim {
   }
   _fauna(dDays) {
     for (const d of this.fauna) {
-      if (!d.alive) { d.respawn -= dDays; if (d.respawn <= 0) { const p = this.world.spawnPoint(this.rng); d.x = p.x; d.z = p.z; d.tx = p.x; d.tz = p.z; d.alive = true; } continue; }
-      const threat = this.nearestHunter(d.x, d.z, FAUNA.FLEE_RADIUS);
-      if (threat) { const a = Math.atan2(d.z - threat.z, d.x - threat.x); d.tx = d.x + Math.cos(a) * 12; d.tz = d.z + Math.sin(a) * 12; }
-      else if (Math.hypot(d.tx - d.x, d.tz - d.z) < 1.5) { const a = this.rng.range(0, 6.28); d.tx = d.x + Math.cos(a) * 10; d.tz = d.z + Math.sin(a) * 10; }
+      if (!d.alive) {
+        d.respawn -= dDays;
+        if (d.respawn <= 0) { const p = this.world.spawnInBiome(this.rng, this.rng.pick(d.def.biomes), [], 0) || this.world.spawnPoint(this.rng); d.x = p.x; d.z = p.z; d.tx = p.x; d.tz = p.z; d.alive = true; d.health = d.def.health; }
+        continue;
+      }
+      let sp = d.def.speed;
+      if (d.def.predator) {
+        const guard = this._nearestGuard(d.x, d.z, 7);
+        const prey = guard ? null : this._nearestVictim(d.x, d.z, d.def.sight);
+        if (guard && d.health < d.def.health * 0.6) { const a = Math.atan2(d.z - guard.z, d.x - guard.x); d.tx = d.x + Math.cos(a) * 14; d.tz = d.z + Math.sin(a) * 14; sp *= 1.3; }
+        else if (prey) { d.tx = prey.x; d.tz = prey.z; if (Math.hypot(prey.x - d.x, prey.z - d.z) < 2.2) prey.health -= d.def.attack * dDays * 6; }
+        else if (Math.hypot(d.tx - d.x, d.tz - d.z) < 1.5) { const a = this.rng.range(0, 6.28); d.tx = d.x + Math.cos(a) * 14; d.tz = d.z + Math.sin(a) * 14; sp *= 0.5; }
+      } else {
+        const threat = this.nearestHunter(d.x, d.z, FAUNA.FLEE_RADIUS) || this._nearestWolf(d.x, d.z, 10);
+        if (threat) { const a = Math.atan2(d.z - threat.z, d.x - threat.x); d.tx = d.x + Math.cos(a) * 12; d.tz = d.z + Math.sin(a) * 12; sp *= 2.4; }
+        else if (Math.hypot(d.tx - d.x, d.tz - d.z) < 1.5) { const a = this.rng.range(0, 6.28); d.tx = d.x + Math.cos(a) * 10; d.tz = d.z + Math.sin(a) * 10; sp *= 0.6; }
+      }
       const dx = d.tx - d.x, dz = d.tz - d.z, dist = Math.hypot(dx, dz);
       if (dist > 0.3) {
-        const sp = (threat ? 22 : 9) * dDays;
-        const nx = d.x + dx / dist * Math.min(dist, sp), nz = d.z + dz / dist * Math.min(dist, sp);
+        const step = sp * dDays;
+        const nx = d.x + dx / dist * Math.min(dist, step), nz = d.z + dz / dist * Math.min(dist, step);
         if (!this.world.isLand(nx, nz)) { d.tx = d.x; d.tz = d.z; } else { d.x = nx; d.z = nz; }
       }
       d.y = this.world.heightAt(d.x, d.z);
@@ -444,12 +449,50 @@ export class Sim {
   nearestHunter(x, z, radius) {
     let best = null, bd = radius * radius;
     for (const b of this.beings) {
-      if (b.job !== 'hunter') continue;
+      if (b.job !== 'hunter' && b.job !== 'warrior') continue;
       const dx = b.x - x, dz = b.z - z, d = dx * dx + dz * dz;
       if (d < bd) { bd = d; best = b; }
     }
     return best;
   }
+  _nearestGuard(x, z, radius) {
+    let best = null, bd = radius * radius;
+    for (const b of this.beings) {
+      if (!b.alive || (b.job !== 'warrior' && b.job !== 'hunter')) continue;
+      const dx = b.x - x, dz = b.z - z, d = dx * dx + dz * dz;
+      if (d < bd) { bd = d; best = b; }
+    }
+    return best;
+  }
+  _nearestVictim(x, z, radius) {
+    let best = null, bd = radius * radius;
+    for (const b of this.beings) {
+      if (!b.alive || b.job === 'warrior') continue;
+      const dx = b.x - x, dz = b.z - z, d = dx * dx + dz * dz;
+      const weight = (b.stage !== 'adult' ? 0.6 : 1);
+      if (d * weight < bd) { bd = d * weight; best = b; }
+    }
+    return best;
+  }
+  _nearestWolf(x, z, radius) {
+    let best = null, bd = radius * radius;
+    for (const f of this.fauna) {
+      if (!f.alive || !f.def.predator) continue;
+      const dx = f.x - x, dz = f.z - z, d = dx * dx + dz * dz;
+      if (d < bd) { bd = d; best = f; }
+    }
+    return best;
+  }
+  nearestPrey(x, z) {
+    let best = null, bd = Infinity;
+    for (const f of this.fauna) {
+      if (!f.alive || f.def.predator) continue;
+      const dx = f.x - x, dz = f.z - z, d = dx * dx + dz * dz;
+      if (d < bd) { bd = d; best = f; }
+    }
+    return best;
+  }
+  nearestPredator(b, radius) { return this._nearestWolf(b.x, b.z, radius); }
 
   // ---- culture & diplomacy ----
   onConverse(a, b) {

@@ -287,31 +287,40 @@ export class Renderer {
     tribe._farms = grp;
   }
 
-  // ---- deer (fauna) ----
-  _makeDeer() {
+  // ---- fauna (deer / boar / wolf) ----
+  _makeBeast(type) {
+    const SPEC = {
+      deer: { c: 0x9a7048, s: 1.0, len: 0.7, r: 0.30, legH: 1.0, antler: true },
+      boar: { c: 0x4a3a2e, s: 1.05, len: 0.8, r: 0.44, legH: 0.6, antler: false },
+      wolf: { c: 0x74777f, s: 0.92, len: 0.85, r: 0.24, legH: 0.62, antler: false },
+    }[type] || { c: 0x8a6a44, s: 1, len: 0.7, r: 0.3, legH: 1.0 };
     const g = new THREE.Group();
-    const mat = new THREE.MeshStandardMaterial({ color: 0x8a6a44, roughness: 0.9 });
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 0.7, 4, 8), mat);
-    body.rotation.z = Math.PI / 2; body.position.y = 1.0; body.castShadow = true; g.add(body);
-    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, 0.7, 6), mat);
-    neck.position.set(0.55, 1.35, 0); neck.rotation.z = -0.6; g.add(neck);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), mat);
-    head.position.set(0.78, 1.6, 0); g.add(head);
-    for (const dx of [-0.3, 0.3]) for (const dz of [-0.18, 0.18]) {
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.0, 4), mat);
-      leg.position.set(dx, 0.5, dz); g.add(leg);
+    const mat = new THREE.MeshStandardMaterial({ color: SPEC.c, roughness: 0.95 });
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(SPEC.r, SPEC.len, 4, 8), mat);
+    body.rotation.z = Math.PI / 2; body.position.y = SPEC.legH + SPEC.r; body.castShadow = true; g.add(body);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(SPEC.r * 0.62, 8, 8), mat);
+    head.position.set(SPEC.len * 0.7 + SPEC.r, SPEC.legH + SPEC.r + (type === 'deer' ? 0.45 : 0.05), 0); g.add(head);
+    if (SPEC.antler) {
+      const am = new THREE.MeshStandardMaterial({ color: 0xb8a070, roughness: 1 });
+      for (const s of [-1, 1]) { const a = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.4, 4), am); a.position.set(SPEC.len * 0.7 + SPEC.r, SPEC.legH + SPEC.r + 0.8, s * 0.1); g.add(a); }
     }
+    for (const dx of [-0.28, 0.28]) for (const dz of [-0.16, 0.16]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, SPEC.legH, 4), mat);
+      leg.position.set(dx, SPEC.legH / 2, dz); g.add(leg);
+    }
+    g.scale.setScalar(SPEC.s);
     this.scene.add(g);
     return g;
   }
   syncFauna() {
-    if (!this.deerMeshes) this.deerMeshes = [];
+    if (!this.beastMeshes) this.beastMeshes = [];
     const fauna = this.sim.fauna;
-    while (this.deerMeshes.length < fauna.length) this.deerMeshes.push(this._makeDeer());
     for (let i = 0; i < fauna.length; i++) {
-      const d = fauna[i], g = this.deerMeshes[i];
-      g.visible = d.alive;
+      const d = fauna[i];
+      let g = this.beastMeshes[i];
+      if (!g) { g = this._makeBeast(d.type); this.beastMeshes[i] = g; }
       if (d.alive) { g.position.set(d.x, d.y, d.z); g.rotation.y = -Math.atan2(d.tz - d.z, d.tx - d.x); }
+      g.visible = d.alive && this.camera.position.distanceTo(g.position) < 320;
     }
   }
 
