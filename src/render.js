@@ -521,10 +521,15 @@ export class Renderer {
       g.position.set(b.x, b.y, b.z);
       g.rotation.y = -b.heading + Math.PI / 2 || 0;
       g.userData.halo.material.opacity = Math.min(0.85, b.godAwareness);
-      // locomotion: real rig walk if animated, else a simple bob
+      const dist = this.camera.position.distanceTo(g.position);
+      // locomotion: real rig walk if animated (LOD: only step the skeleton when near)
       if (g.userData.mixer) {
-        g.userData.mixer.update(this._dt || 0.016);
-        g.userData.walk.setEffectiveWeight(b.moving ? 1 : 0);
+        if (dist < 200) {
+          g.userData.mixer.update(this._dt || 0.016);
+          // full walk while moving; a faint sway at rest so they aren't frozen
+          g.userData.walk.setEffectiveWeight(b.moving ? 1 : 0.12);
+          g.userData.walk.timeScale = b.moving ? 1.3 : 0.35;
+        }
         g.userData.body.position.y = g.userData.bodyBaseY;
       } else {
         g.userData.body.position.y = g.userData.bodyBaseY + (b.moving ? Math.abs(Math.sin(performance.now() * 0.011 + b.id)) * 0.08 : 0);
@@ -532,8 +537,7 @@ export class Renderer {
       // thought bubble (LOD: hide when far to keep the view clean)
       const key = this._bubbleKey(b);
       if (key !== g.userData.bubbleKey) { g.userData.bubble.material = this.bubbleMats[key]; g.userData.bubbleKey = key; }
-      const dist = this.camera.position.distanceTo(g.position);
-      g.userData.bubble.visible = dist < 95;
+      g.userData.bubble.visible = dist < 130;
     }
     // remove gone
     for (const [id, g] of this.beingMeshes) {

@@ -1,11 +1,11 @@
 // AEON — global tuning constants. One place to balance the whole sim.
 
 export const WORLD = {
-  SIZE: 320,          // world units across (a bigger continent)
-  SEG: 200,           // terrain grid resolution
+  SIZE: 640,          // world units across (a massive continent)
+  SEG: 256,           // terrain grid resolution
   SEA_LEVEL: 0.0,     // height at/below this is ocean
-  MAX_HEIGHT: 20,     // peak mountain height in world units
-  ISLAND_FALLOFF: 1.35,// how hard the coast drops to sea
+  MAX_HEIGHT: 30,     // peak mountain height in world units
+  ISLAND_FALLOFF: 1.25,// how hard the coast drops to sea
 };
 
 // Playable peoples. `mesh` maps to an asset key (falls back to 'being'); hue tints them,
@@ -17,10 +17,10 @@ export const RACES = {
   thornkin:  { name: 'Thornkin',  mesh: 'thorn', hue: 0.32, build: 1.05, biome: 'forest', trait: { curious: 0.4 } },
 };
 
-export const TRIBES = { COUNT: 3, START_POP: 9 };
+export const TRIBES = { COUNT: 6, START_POP: 9 };
 
 // One in-game DAY = this many real seconds at 1x speed (slowed for day-to-day life).
-export const DAY_SECONDS = 34;
+export const DAY_SECONDS = 55;
 export const YEAR_DAYS = 30;          // days per year
 
 export const TIME_SCALES = [0, 1, 4, 16, 70]; // pause, lived, days, seasons, ages
@@ -63,7 +63,7 @@ export const COMBAT = {
 
 // fauna for hunting
 export const FAUNA = {
-  DEER_COUNT: 34,
+  DEER_COUNT: 90,
   DEER_FOOD: 14,        // food yield when caught
   DEER_HIDE: 1,
   FLEE_RADIUS: 14,
@@ -88,7 +88,7 @@ export const POP = {
 };
 
 export const FOOD = {
-  BUSH_COUNT: 150,
+  BUSH_COUNT: 420,
   BUSH_MAX: 5,         // berries per bush
   REGROW_DAYS: 2.5,    // days to regrow one berry
 };

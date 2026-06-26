@@ -38,16 +38,17 @@ export class Sim {
   // ---- world setup ----
   _seedTribes() {
     const keys = Object.keys(RACES);
-    // always start with dawnfolk, then distinct others
-    const chosen = ['dawnfolk'];
-    const rest = keys.filter(k => k !== 'dawnfolk');
-    while (chosen.length < TRIBES.COUNT && rest.length) {
-      chosen.push(rest.splice(this.rng.int(0, rest.length - 1), 1)[0]);
+    // distinct races first, then repeat to fill the tribe count (far-flung peoples)
+    const chosen = [];
+    const pool = ['dawnfolk', ...this.rng ? keys.filter(k => k !== 'dawnfolk') : []];
+    while (chosen.length < TRIBES.COUNT) {
+      if (chosen.length < keys.length) chosen.push(pool[chosen.length] || keys[chosen.length]);
+      else chosen.push(keys[this.rng.int(0, keys.length - 1)]);
     }
     const homes = [];
     for (const key of chosen) {
       const race = RACES[key];
-      const home = this.world.spawnInBiome(this.rng, race.biome, homes, this.world.size * 0.22);
+      const home = this.world.spawnInBiome(this.rng, race.biome, homes, this.world.size * 0.18);
       home.y = this.world.heightAt(home.x, home.z);
       homes.push(home);
       const tribe = new Tribe(this.rng, key, race, home);
@@ -126,6 +127,11 @@ export class Sim {
       this._jobTimer = 0.34;
       for (const t of this.tribes) { this.assignJobs(t); this.assignHomes(t); this._maybeFarms(t); }
       this._diplomacy();
+    }
+    this._govTimer = (this._govTimer || 0) - total;
+    if (this._govTimer <= 0) {
+      this._govTimer = 1.6;
+      for (const t of this.tribes) this._govern(t);
     }
     return total;
   }
@@ -233,13 +239,14 @@ export class Sim {
     const n = adults.length;
     const atWar = tribe._wars && tribe._wars.size > 0;
     const aggr = (tribe.race.trait?.brave || 0) > 0.2;
+    const f = tribe._focus; // government directive: 'food' | 'build' | 'war' | null
     const need = {
-      warrior: atWar ? Math.max(2, Math.round(n * 0.32)) : Math.round(n * (aggr ? 0.12 : 0.07)),
-      hunter: Math.round(n * 0.16),
-      woodcutter: Math.round(n * 0.15),
-      miner: Math.round(n * 0.11),
-      builder: Math.max(1, Math.round(n * 0.11)),
-      farmer: tribe.tech.includes('farming') ? Math.round(n * 0.18) : 0,
+      warrior: atWar ? Math.max(2, Math.round(n * (f === 'war' ? 0.42 : 0.32))) : Math.round(n * (aggr ? 0.12 : 0.07)),
+      hunter: Math.round(n * (f === 'food' ? 0.26 : 0.16)),
+      woodcutter: Math.round(n * (f === 'build' ? 0.24 : 0.15)),
+      miner: Math.round(n * (f === 'build' ? 0.18 : 0.11)),
+      builder: Math.max(1, Math.round(n * (f === 'build' ? 0.2 : 0.11))),
+      farmer: tribe.tech.includes('farming') ? Math.round(n * (f === 'food' ? 0.28 : 0.18)) : 0,
     };
     const leader = adults.find(a => a.id === tribe.leaderId);
     if (leader) leader.job = 'leader';
@@ -441,6 +448,77 @@ export class Sim {
           this.chronicle.add(this.day, this.year, '🕊️', `The ${a.name} and the ${b.name} lay down their arms.`, 'gov');
         }
       }
+    }
+  }
+
+  // ---- government: the leader deliberates and sets the people's course ----
+  _govern(tribe) {
+    const members = this.membersOf(tribe);
+    if (!members.length) return;
+    const leader = this.beings.find(b => b.id === tribe.leaderId);
+    // government form evolves with knowledge
+    const form = tribe.tech.includes('writing') ? 'chiefdom' : tribe.tech.includes('language') ? 'council' : 'band';
+    if (form !== tribe.government) {
+      tribe.government = form;
+      if (form !== 'band') this.chronicle.add(this.day, this.year, '🏛️', `The ${tribe.name} form a ${form}.`, 'gov');
+    }
+    if (!leader || form === 'band') return; // no formal decisions before language
+
+    const pop = members.length;
+    // assess neighbours
+    const others = this.tribes.filter(t => t !== tribe && this.membersOf(t).length > 0);
+    let rival = null, ally = null, rivalBad = 1, allyGood = -1;
+    for (const o of others) {
+      const s = tribe.standing(o.id);
+      if (s < rivalBad) { rivalBad = s; rival = o; }
+      if (s > allyGood) { allyGood = s; ally = o; }
+    }
+    const atWar = tribe._wars && tribe._wars.size > 0;
+    const decisions = [];
+    if (tribe.res.food < 22) decisions.push('food');
+    if (tribe.res.wood < RES.HUT_COST.wood && tribe.huts.length < pop / 3) decisions.push('build');
+    if (atWar) {
+      const myStrength = members.filter(m => m.job === 'warrior').length + pop * 0.1;
+      const losing = members.filter(m => m.health < 50).length > pop * 0.3;
+      decisions.push(losing ? 'peace' : 'war');
+    } else if (rival && rivalBad < -15 && (tribe.race.trait?.brave || 0) > 0.15) {
+      decisions.push('threaten');
+    }
+    if (ally && allyGood > 25) decisions.push('trade');
+    if (!decisions.length) decisions.push(this.rng.pick(['feast', 'expand', 'monument']));
+
+    const choice = this.rng.pick(decisions);
+    tribe._focus = (choice === 'food' || choice === 'build' || choice === 'war') ? choice : null;
+    const who = leader.name;
+    switch (choice) {
+      case 'food':
+        this.chronicle.add(this.day, this.year, '🏛️', `${who} decrees the ${tribe.name} must gather more food.`, 'gov'); break;
+      case 'build':
+        this.chronicle.add(this.day, this.year, '🏛️', `${who} orders new homes raised for the ${tribe.name}.`, 'gov'); break;
+      case 'war':
+        this.chronicle.add(this.day, this.year, '🏛️', `${who} rallies the ${tribe.name} warriors to press the war.`, 'gov'); break;
+      case 'peace':
+        if (rival) { tribe.adjustStanding(rival.id, 60); rival.adjustStanding(tribe.id, 40); }
+        this.chronicle.add(this.day, this.year, '🏛️', `${who} sues for peace on behalf of the weary ${tribe.name}.`, 'gov'); break;
+      case 'threaten':
+        if (rival) { tribe.adjustStanding(rival.id, -25); }
+        this.chronicle.add(this.day, this.year, '🏛️', `${who} turns the ${tribe.name} against the ${rival.name}.`, 'gov'); break;
+      case 'trade':
+        if (ally) {
+          const give = Math.min(8, tribe.res.food); tribe.res.food -= give; ally.res.wood += give;
+          ally.res.food = (ally.res.food || 0); tribe.res.wood += 6;
+          tribe.adjustStanding(ally.id, 8); ally.adjustStanding(tribe.id, 8);
+          this.chronicle.add(this.day, this.year, '🤝', `The ${tribe.name} and ${ally.name} trade goods and grow closer.`, 'gov');
+        }
+        break;
+      case 'feast':
+        for (const m of members) { m.social = Math.min(100, m.social + 30); }
+        this.chronicle.add(this.day, this.year, '🎉', `${who} calls a great feast; the ${tribe.name} celebrate together.`, 'gov'); break;
+      case 'monument':
+        if (tribe.res.stone >= 6) { tribe.res.stone -= 6; for (const m of members) m.godAwareness = Math.min(1, m.godAwareness + 0.1); this.chronicle.add(this.day, this.year, '🗿', `${who} raises a monument; the ${tribe.name} look to the heavens.`, 'gov'); }
+        break;
+      case 'expand':
+        this.chronicle.add(this.day, this.year, '🧭', `${who} sends the ${tribe.name} to range farther across the land.`, 'gov'); break;
     }
   }
 
