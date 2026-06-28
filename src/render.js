@@ -289,6 +289,15 @@ export class Renderer {
 
   // ---- fauna (deer / boar / wolf) ----
   _makeBeast(type) {
+    // generated low-poly GLB if available (already normalized: base at y=0, scaled)
+    if (this._has(type)) {
+      const g = new THREE.Group();
+      const m = this.assets.clone(type);
+      m.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+      g.add(m);
+      this.scene.add(g);
+      return g;
+    }
     const SPEC = {
       deer: { c: 0x9a7048, s: 1.0, len: 0.7, r: 0.30, legH: 1.0, antler: true },
       boar: { c: 0x4a3a2e, s: 1.05, len: 0.8, r: 0.44, legH: 0.6, antler: false },

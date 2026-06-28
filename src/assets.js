@@ -14,6 +14,11 @@ const MANIFEST = {
   ember:    { file: 'ember.glb',    height: 1.9 }, // Emberfolk
   frost:    { file: 'frost.glb',    height: 1.95 }, // Frostborn
   thorn:    { file: 'thorn.glb',    height: 2.0 }, // Thornkin
+  deer:     { file: 'deer.glb',     height: 1.7 },
+  boar:     { file: 'boar.glb',     height: 1.1 },
+  wolf:     { file: 'wolf.glb',     height: 1.1 },
+  mammoth:  { file: 'mammoth.glb',  height: 3.6 },
+  fish:     { file: 'fish.glb',     height: 0.6 },
   hut:      { file: 'hut.glb',      height: 2.8 },
   tree:     { file: 'tree.glb',     height: 4.0 },
   bush:     { file: 'bush.glb',     height: 1.1 },

@@ -1,11 +1,11 @@
 // AEON — global tuning constants. One place to balance the whole sim.
 
 export const WORLD = {
-  SIZE: 640,          // world units across (a massive continent)
-  SEG: 256,           // terrain grid resolution
+  SIZE: 780,          // world units across (a vast continent)
+  SEG: 288,           // terrain grid resolution
   SEA_LEVEL: 0.0,     // height at/below this is ocean
-  MAX_HEIGHT: 30,     // peak mountain height in world units
-  ISLAND_FALLOFF: 1.25,// how hard the coast drops to sea
+  MAX_HEIGHT: 32,     // peak mountain height in world units
+  ISLAND_FALLOFF: 1.2,// how hard the coast drops to sea
 };
 
 // Playable peoples. `mesh` maps to an asset key (falls back to 'being'); hue tints them,
@@ -69,6 +69,7 @@ export const FAUNA = {
     // prey
     deer: { count: 70, food: 14, speed: 9, health: 16, predator: false, biomes: ['grass', 'savanna', 'forest', 'tundra'] },
     boar: { count: 22, food: 24, speed: 8, health: 42, predator: false, gore: 18, biomes: ['forest', 'jungle', 'savanna'] },
+    mammoth: { count: 9, food: 70, speed: 6, health: 120, predator: false, gore: 30, biomes: ['tundra', 'taiga', 'savanna'] },
     // predator — hunts lone beings
     wolf: { count: 16, food: 7, speed: 13, health: 34, predator: true, attack: 16, sight: 30, biomes: ['forest', 'taiga', 'tundra', 'rock'] },
   },
