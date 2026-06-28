@@ -1,6 +1,6 @@
 // HUD — all on-screen UI. Builds DOM into #ui-root, reflects sim/god state, and emits
 // tool changes. Keeps the "beings & their minds" focus: a rich inspector for one being.
-import { TIME_SCALES, TIME_LABELS, GOD, LIFE, eraOf } from './config.js';
+import { TIME_SCALES, TIME_LABELS, GOD, LIFE, eraOf, BUILDINGS, BUILD_ORDER } from './config.js';
 
 const TOOLS = [
   { id: 'inspect', icon: '🔍', name: 'Observe', cost: 0, hint: 'Click a being to read their mind.' },
@@ -154,11 +154,75 @@ export class HUD {
       const row = e.target.closest('[data-idx]'); if (!row) return;
       const t = this.sim.tribes[+row.dataset.idx];
       if (t && this.renderer) this.renderer.flyTo(t.home.x, t.home.z);
+      if (t) this.onFocusTribe(t);
     });
+
+    // ---- build bar (bottom-center) ----
+    this.onBuild = () => {};
+    this.onFocusTribe = () => {};
+    this.buildType = null;
+    const bar = this._el('div', 'panel pointer');
+    bar.style.cssText += 'position:absolute;bottom:14px;left:50%;transform:translateX(-50%);display:flex;gap:4px;padding:7px 9px;align-items:center;';
+    bar.innerHTML = `<span style="color:var(--gold-dim);font-size:10px;letter-spacing:2px;margin-right:4px;">BUILD</span>`;
+    BUILD_ORDER.forEach((type) => {
+      const d = BUILDINGS[type];
+      const b = this._el('button');
+      b.dataset.build = type;
+      b.style.cssText = 'background:none;border:1px solid transparent;border-radius:5px;padding:5px 7px;cursor:pointer;font-size:19px;transition:.12s;';
+      b.textContent = d.icon;
+      b.addEventListener('mouseenter', () => this._showBuildDetail(type));
+      b.addEventListener('mouseleave', () => { if (!this.buildType) this._hideBuildDetail(); });
+      b.addEventListener('click', () => this.setBuild(this.buildType === type ? null : type));
+      bar.appendChild(b);
+    });
+    root.appendChild(bar);
+    this.buildBtns = bar.querySelectorAll('[data-build]');
+
+    // ---- build detail screen (above the bar) ----
+    this.buildDetail = this._el('div', 'panel');
+    this.buildDetail.style.cssText += 'position:absolute;bottom:64px;left:50%;transform:translateX(-50%);width:300px;padding:11px 14px;display:none;';
+    root.appendChild(this.buildDetail);
 
     this.setTool('inspect');
     this._renderChron();
   }
+
+  setBuild(type) {
+    this.buildType = type;
+    this.buildBtns.forEach((b) => {
+      const on = b.dataset.build === type;
+      b.style.borderColor = on ? 'var(--gold)' : 'transparent';
+      b.style.background = on ? 'rgba(232,200,122,0.15)' : 'none';
+    });
+    if (type) { this.setTool('inspect'); this._showBuildDetail(type, true); }
+    else this._hideBuildDetail();
+    this.onBuild(type);
+  }
+
+  _showBuildDetail(type, placing = false) {
+    const d = BUILDINGS[type];
+    const ft = (this.selected && this.selected.tribe) || this.sim.tribes[0];
+    const costStr = Object.entries(d.cost).map(([k, v]) => {
+      const have = ft ? Math.floor(ft.res[k]) : 0;
+      const ok = have >= v;
+      const icon = k === 'wood' ? '🪵' : k === 'stone' ? '🪨' : '🍖';
+      return `<span style="color:${ok ? 'var(--text)' : '#d0594a'};">${icon} ${v}</span>`;
+    }).join(' &nbsp; ');
+    this.buildDetail.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:24px;">${d.icon}</span>
+        <div><div style="color:var(--gold);font-size:15px;font-weight:600;">${d.name}</div>
+        <div style="color:#7fae6a;font-size:11px;">${d.effect}</div></div>
+      </div>
+      <div style="color:var(--text-dim);font-size:11px;margin:6px 0;line-height:1.35;">${d.desc}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;">
+        <span>${costStr}</span>
+        ${ft ? `<span style="color:var(--text-dim);font-size:10px;">for ${ft.name}</span>` : ''}
+      </div>
+      ${placing ? `<div style="margin-top:7px;font-size:10px;color:var(--gold-dim);letter-spacing:1px;">CLICK THE LAND TO PLACE · ESC TO CANCEL</div>` : ''}`;
+    this.buildDetail.style.display = 'block';
+  }
+  _hideBuildDetail() { this.buildDetail.style.display = 'none'; }
 
   _renderTribes() {
     if (!this.elTribes) return;
@@ -203,6 +267,9 @@ export class HUD {
       this.elFood.textContent = Math.floor(ft.res.food);
       this.elWood.textContent = Math.floor(ft.res.wood);
       this.elStone.textContent = Math.floor(ft.res.stone);
+    }
+    if (this.buildBtns && ft) {
+      this.buildBtns.forEach((b) => { b.style.opacity = s.canAfford(ft, b.dataset.build) ? '1' : '0.4'; });
     }
     this._renderTribes();
     this.speedBtns.forEach((b, i) => {

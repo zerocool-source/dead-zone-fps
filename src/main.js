@@ -16,7 +16,10 @@ const hud = new HUD(sim, god);
 let tool = 'inspect';
 let inspireSource = null;     // first-click being for the Inspire two-step
 let possessed = null;
+let buildType = null;         // active city-builder placement
+let focusTribe = null;        // which tribe you're building for
 const keys = new Set();
+const ndcOf = (e) => ({ x: (e.clientX / window.innerWidth) * 2 - 1, y: -(e.clientY / window.innerHeight) * 2 + 1 });
 
 // expose for debugging / console tinkering
 window.AEON = { sim, god, renderer, hud };
@@ -49,10 +52,13 @@ async function boot() {
   });
 
   wireInput();
-  hud.onTool = (t) => { tool = t; inspireSource = null; };
+  focusTribe = sim.tribes[0];
+  hud.onTool = (t) => { tool = t; inspireSource = null; if (t !== 'build') cancelBuild(); };
   hud.onSpeed = (i) => sim.setSpeed(i);
   hud.onUnpossess = () => unpossess();
-  hud.onSelectLink = (b) => { renderer.setSelected(b); renderer.focusOn(b); };
+  hud.onSelectLink = (b) => { renderer.setSelected(b); renderer.focusOn(b); if (b.tribe) focusTribe = b.tribe; };
+  hud.onBuild = (t) => { buildType = t; if (!t) renderer.hideGhost(); };
+  hud.onFocusTribe = (t) => { focusTribe = t; };
 
   requestAnimationFrame(loop);
 }
@@ -65,13 +71,18 @@ function wireInput() {
   canvas.addEventListener('pointerdown', (e) => { downX = e.clientX; downY = e.clientY; moved = false; });
   canvas.addEventListener('pointermove', (e) => {
     if (Math.hypot(e.clientX - downX, e.clientY - downY) > 5) moved = true;
+    // live placement ghost
+    if (buildType) {
+      const g = renderer.raycastGround(ndcOf(e));
+      if (g) renderer.showGhost(buildType, g.x, g.z, sim.world.isLand(g.x, g.z) && sim.canAfford(focusTribe, buildType));
+      else renderer.hideGhost();
+    }
   });
+  canvas.addEventListener('contextmenu', (e) => { if (buildType) { e.preventDefault(); cancelBuild(); } });
   canvas.addEventListener('pointerup', (e) => {
     if (moved) return; // was an orbit drag
-    const ndc = {
-      x: (e.clientX / window.innerWidth) * 2 - 1,
-      y: -(e.clientY / window.innerHeight) * 2 + 1,
-    };
+    const ndc = ndcOf(e);
+    if (buildType) { placeBuild(ndc); return; }
     handleClick(ndc);
   });
 
@@ -80,15 +91,32 @@ function wireInput() {
     keys.add(e.key.toLowerCase());
     if (e.code === 'Space') { e.preventDefault(); sim.setSpeed(sim.speedIndex === 0 ? 1 : 0); }
     if (e.key >= '1' && e.key <= '5') sim.setSpeed(+e.key - 1);
-    if (e.key === 'Escape' && possessed) unpossess();
+    if (e.key === 'Escape') { if (buildType) cancelBuild(); else if (possessed) unpossess(); }
   });
   window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
+}
+
+function placeBuild(ndc) {
+  const g = renderer.raycastGround(ndc);
+  if (!g) return;
+  if (!sim.world.isLand(g.x, g.z)) { hud.message('Cannot build on water.'); return; }
+  if (sim.placeBuilding(focusTribe, buildType, g.x, g.z)) {
+    renderer.spawnEffect(g.x, g.z, 0xe8c87a, 4);
+  } else {
+    hud.message(`The ${focusTribe.name} lack the resources for that.`);
+  }
+}
+function cancelBuild() {
+  if (!buildType) return;
+  buildType = null;
+  renderer.hideGhost();
+  hud.setBuild(null);
 }
 
 function handleClick(ndc) {
   if (tool === 'inspect') {
     const b = renderer.raycastBeing(ndc);
-    if (b) { renderer.setSelected(b); hud.selectBeing(b); }
+    if (b) { renderer.setSelected(b); hud.selectBeing(b); if (b.tribe) focusTribe = b.tribe; }
     else { renderer.clearSelection(); hud.selectBeing(null); }
     return;
   }

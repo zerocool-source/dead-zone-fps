@@ -207,7 +207,57 @@ export class Renderer {
       if (tribe.tech.includes('ritual') && !tribe._totem) this._buildTotem(tribe);
       if (tribe.farms.length && !tribe._farms) this._buildFarmsForTribe(tribe);
     }
+    // player-placed buildings (skip 'hut' — rendered via the huts array)
+    if (!this.buildingMeshes) this.buildingMeshes = new Map();
+    for (const tribe of this.sim.tribes) {
+      for (const b of tribe.buildings) {
+        if (b.type === 'hut') continue;
+        let m = this.buildingMeshes.get(b);
+        if (!m) { m = this._makeBuildingMesh(b.type); m.position.set(b.x, b.y, b.z); this.structGroup.add(m); this.buildingMeshes.set(b, m); }
+        m.scale.y = b.built ? 1 : (0.25 + 0.75 * Math.min(1, b.progress / b.work));
+      }
+    }
   }
+
+  _makeBuildingMesh(type) {
+    const g = new THREE.Group();
+    const WOOD = 0x8a6a44, DARK = 0x5a3a22, STONE = 0x9a9690, STRAW = 0xc0a256;
+    const box = (w, h, d, c, y) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color: c, roughness: 1 }));
+      m.position.y = y + h / 2; m.castShadow = true; g.add(m); return m;
+    };
+    if (type === 'hut' && this._has('hut')) { g.add(this.assets.clone('hut')); return g; }
+    if (type === 'totem' && this._has('totem')) { g.add(this.assets.clone('totem')); return g; }
+    switch (type) {
+      case 'storehouse': { box(4, 2, 3, WOOD, 0); const r = box(4.4, 0.4, 3.4, DARK, 2); break; }
+      case 'granary': { box(2, 0.6, 2, WOOD, 0); const b = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 1.8, 10), new THREE.MeshStandardMaterial({ color: STRAW, roughness: 1 })); b.position.y = 1.5; b.castShadow = true; g.add(b); const r = new THREE.Mesh(new THREE.ConeGeometry(1.4, 1, 10), new THREE.MeshStandardMaterial({ color: DARK })); r.position.y = 2.9; g.add(r); break; }
+      case 'farm': { const m = new THREE.Mesh(new THREE.BoxGeometry(4, 0.16, 4), new THREE.MeshStandardMaterial({ color: 0x6a5a2a, roughness: 1 })); m.position.y = 0.08; g.add(m); break; }
+      case 'lodge': { box(3, 1.6, 2.4, WOOD, 0); const l = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 2.6, 6), new THREE.MeshStandardMaterial({ color: DARK })); l.rotation.z = Math.PI / 2; l.position.set(1.7, 0.3, 0); g.add(l); break; }
+      case 'mine': { const mo = new THREE.Mesh(new THREE.ConeGeometry(2, 1.6, 6), new THREE.MeshStandardMaterial({ color: STONE, roughness: 1 })); mo.position.y = 0.8; mo.castShadow = true; g.add(mo); const e = box(1, 1, 0.5, 0x141414, 0); e.position.z = 1.5; break; }
+      case 'monument': { box(2.4, 0.6, 2.4, STONE, 0); const ob = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.9, 5, 4), new THREE.MeshStandardMaterial({ color: STONE, roughness: 1 })); ob.position.y = 3; ob.castShadow = true; g.add(ob); break; }
+      case 'palisade': { for (let i = -2; i <= 2; i++) { const lg = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 2.2, 6), new THREE.MeshStandardMaterial({ color: DARK, roughness: 1 })); lg.position.set(i * 0.5, 1.1, 0); lg.castShadow = true; g.add(lg); const tp = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.4, 6), new THREE.MeshStandardMaterial({ color: DARK })); tp.position.set(i * 0.5, 2.3, 0); g.add(tp); } break; }
+      case 'watchtower': { for (const dx of [-0.8, 0.8]) for (const dz of [-0.8, 0.8]) { const lg = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 3.4, 6), new THREE.MeshStandardMaterial({ color: WOOD })); lg.position.set(dx, 1.7, dz); g.add(lg); } box(2.4, 0.3, 2.4, WOOD, 3.2); const r = new THREE.Mesh(new THREE.ConeGeometry(1.8, 1, 4), new THREE.MeshStandardMaterial({ color: DARK })); r.position.y = 4.2; r.rotation.y = Math.PI / 4; g.add(r); break; }
+      case 'totem': { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.5, 3.2, 6), new THREE.MeshStandardMaterial({ color: 0x7a4a2a, roughness: 1 })); p.position.y = 1.6; p.castShadow = true; g.add(p); break; }
+      default: box(2.2, 1.6, 2.2, WOOD, 0);
+    }
+    return g;
+  }
+
+  // ---- placement ghost ----
+  showGhost(type, x, z, valid) {
+    if (this._ghostType !== type) {
+      if (this.ghost) this.scene.remove(this.ghost);
+      this.ghost = this._makeBuildingMesh(type);
+      this.ghost.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.5; o.castShadow = false; } });
+      this.scene.add(this.ghost);
+      this._ghostType = type;
+    }
+    this.ghost.visible = true;
+    this.ghost.position.set(x, this.sim.world.heightAt(x, z), z);
+    const col = valid ? 0x6ad06a : 0xd05a5a;
+    this.ghost.traverse((o) => { if (o.isMesh && o.material.color) o.material.color.setHex(col); });
+  }
+  hideGhost() { if (this.ghost) this.ghost.visible = false; }
   _buildCampfire(tribe) {
     const home = tribe.home;
     const g = new THREE.Group();

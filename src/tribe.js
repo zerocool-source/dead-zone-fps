@@ -18,6 +18,8 @@ export class Tribe {
 
     this.res = { ...RES.START };            // own stockpile
     this.huts = [];                         // {x,z,y,occupants}
+    this.buildings = [];                     // player-placed {type,x,z,y,built,progress,work}
+    this.defense = 0;                        // sum of built defensive structures
     this.farms = [];
     this.insight = 0;
     this.tech = [];

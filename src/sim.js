@@ -9,6 +9,7 @@ import { Chronicle } from './chronicle.js';
 import { makeName } from './names.js';
 import {
   DAY_SECONDS, YEAR_DAYS, TIME_SCALES, POP, FOOD, TECH, LIFE, RES, FAUNA, JOBS, RACES, TRIBES, COMBAT,
+  BUILDINGS,
 } from './config.js';
 
 export class Sim {
@@ -121,6 +122,7 @@ export class Sim {
       this._resources(dDays);
       this._fauna(dDays);
       this._gestation();
+      this._produce(dDays);
     }
 
     for (const t of this.tribes) this._discoveries(t);
@@ -247,6 +249,55 @@ export class Sim {
       tribe.huts.push({ x: site.x, z: site.z, y: site.y, occupants: [], tribe });
       builder.skills.build = Math.min(1, builder.skills.build + 0.03);
       if (builder.rng.chance(0.5)) builder.remember('build', `raised a new home for the ${tribe.name}`, 2);
+    }
+  }
+
+  // ---- player city-building ----
+  canAfford(tribe, type) {
+    const c = BUILDINGS[type].cost;
+    return tribe.res.wood >= (c.wood || 0) && tribe.res.stone >= (c.stone || 0) && tribe.res.food >= (c.food || 0);
+  }
+  placeBuilding(tribe, type, x, z) {
+    if (!tribe || !BUILDINGS[type]) return false;
+    if (!this.world.isLand(x, z)) return false;
+    if (!this.canAfford(tribe, type)) return false;
+    const c = BUILDINGS[type].cost;
+    tribe.res.wood -= (c.wood || 0); tribe.res.stone -= (c.stone || 0); tribe.res.food -= (c.food || 0);
+    tribe.buildings.push({ type, x, z, y: this.world.heightAt(x, z), built: false, progress: 0, work: BUILDINGS[type].work });
+    this.chronicle.add(this.day, this.year, '🏗️', `You mark out a ${BUILDINGS[type].name} for the ${tribe.name}.`, 'god');
+    return true;
+  }
+  // nearest unbuilt player site for a tribe's builders
+  nextBuildSite(tribe, x, z) {
+    let best = null, bd = Infinity;
+    for (const b of tribe.buildings) {
+      if (b.built) continue;
+      const d = (b.x - x) ** 2 + (b.z - z) ** 2;
+      if (d < bd) { bd = d; best = b; }
+    }
+    return best;
+  }
+  constructAt(site, builder, dDays) {
+    site.progress += (1 + builder.skills.build) * dDays * 2.2;
+    builder.skills.build = Math.min(1, builder.skills.build + 0.006);
+    if (site.progress >= site.work) {
+      site.built = true;
+      const def = BUILDINGS[site.type];
+      if (site.type === 'farm') builder.tribe.farms.push({ x: site.x, z: site.z, y: site.y, yield: 6, max: 6, regrow: 0 });
+      if (site.type === 'hut') builder.tribe.huts.push({ x: site.x, z: site.z, y: site.y, occupants: [] });
+      if (def.defense) builder.tribe.defense += def.defense;
+      this.chronicle.add(this.day, this.year, '✅', `The ${builder.tribe.name} finish a ${def.name}.`, 'gov');
+    }
+  }
+  // passive output of completed buildings
+  _produce(dDays) {
+    for (const tribe of this.tribes) {
+      for (const b of tribe.buildings) {
+        if (!b.built) continue;
+        const def = BUILDINGS[b.type];
+        if (def.produces) for (const k in def.produces) tribe.res[k] = (tribe.res[k] || 0) + def.produces[k] * dDays;
+        if (def.faith) for (const m of this.membersOf(tribe)) m.godAwareness = Math.min(1, m.godAwareness + def.faith * dDays * 0.4);
+      }
     }
   }
 

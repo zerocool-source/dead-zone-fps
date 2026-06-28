@@ -227,8 +227,13 @@ export class Being {
     this.tx = plot.x; this.tz = plot.z; return ACTION.FARM;
   }
   _goBuild(sim) {
+    // player-placed sites first, then auto-huts, then help cut wood
+    const psite = this.tribe ? sim.nextBuildSite(this.tribe, this.x, this.z) : null;
+    if (psite) {
+      this.actTarget = { kind: 'construct', ref: psite }; this.tx = psite.x; this.tz = psite.z; return ACTION.BUILD;
+    }
     const site = sim.buildSite(this.tribe);
-    if (!site) { // nothing to build → help cut wood
+    if (!site) {
       return this._goGather(sim, sim.nearestTree(this.x, this.z), 'wood', ACTION.CHOP);
     }
     this.actTarget = { kind: 'build', ref: site };
@@ -380,6 +385,10 @@ export class Being {
     } else if (k === 'flee') {
       this.action = ACTION.FLEE;
       if (reached) { this.actTarget = null; this._think = this.rng.range(0.2, 0.4); }
+    } else if (k === 'construct') {
+      const site = this.actTarget.ref;
+      if (!site || site.built) { this.actTarget = null; this._think = 0; }
+      else if (reached) { this.action = ACTION.BUILD; sim.constructAt(site, this, dDays); if (site.built) { this.actTarget = null; this._think = 0; } }
     } else if (k === 'build' && reached) {
       sim.tryBuild(this.actTarget.ref, this);
       this.actTarget = null; this._think = this.rng.range(0.3, 0.6);

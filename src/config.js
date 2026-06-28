@@ -122,6 +122,32 @@ export function eraOf(techIds) {
   return era;
 }
 
+// Player-placeable buildings. You place a site (spending the focused tribe's
+// resources); the tribe's builders construct it; once built it provides its effect.
+export const BUILDINGS = {
+  hut:        { name: 'Hut',          icon: '🛖', cost: { wood: 10, stone: 3 },  work: 6,  mesh: 'hut',
+    desc: 'A home. Houses a family who sleep here at night.', effect: 'Shelter for ~5 souls' },
+  storehouse: { name: 'Storehouse',   icon: '🏪', cost: { wood: 20, stone: 8 },  work: 10, mesh: null, cap: 200,
+    desc: 'A central store for the tribe’s goods.', effect: '+200 resource storage' },
+  granary:    { name: 'Granary',      icon: '🌾', cost: { wood: 16, stone: 4 },  work: 8,  mesh: null, produces: { food: 4 },
+    desc: 'Stores and grows grain.', effect: '+4 food / day' },
+  farm:       { name: 'Farm Plot',    icon: '🌱', cost: { wood: 8 },             work: 5,  mesh: null, produces: { food: 5 },
+    desc: 'Tilled land worked for crops.', effect: '+5 food / day' },
+  lodge:      { name: 'Logging Lodge', icon: '🪵', cost: { wood: 14, stone: 4 }, work: 8,  mesh: null, produces: { wood: 5 },
+    desc: 'Organizes the woodcutters.', effect: '+5 wood / day' },
+  mine:       { name: 'Mine',         icon: '⛏️', cost: { wood: 10, stone: 10 }, work: 10, mesh: null, produces: { stone: 4 },
+    desc: 'Digs ore and stone from the earth.', effect: '+4 stone / day' },
+  totem:      { name: 'Totem',        icon: '🗿', cost: { wood: 8, stone: 6 },   work: 6,  mesh: 'totem', faith: 0.12,
+    desc: 'A sacred marker of your watching presence.', effect: 'Spreads devotion' },
+  monument:   { name: 'Monument',     icon: '🏛️', cost: { stone: 30 },           work: 18, mesh: null, faith: 0.35,
+    desc: 'A great work raised in your name.', effect: 'Strong devotion + prestige' },
+  palisade:   { name: 'Palisade',     icon: '🧱', cost: { wood: 12 },            work: 5,  mesh: null, defense: 1,
+    desc: 'A wall of sharpened logs.', effect: '+1 defense vs raids & beasts' },
+  watchtower: { name: 'Watchtower',   icon: '🗼', cost: { wood: 18, stone: 6 },  work: 10, mesh: null, defense: 3,
+    desc: 'A lookout that guards the village.', effect: '+3 defense, spots danger' },
+};
+export const BUILD_ORDER = ['hut', 'storehouse', 'granary', 'farm', 'lodge', 'mine', 'totem', 'monument', 'palisade', 'watchtower'];
+
 export const GOD = {
   FAITH_START: 20,
   FAITH_MAX: 200,
