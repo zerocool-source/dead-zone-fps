@@ -77,8 +77,8 @@ export class World {
   _biomeFor(height, temp, moist) {
     if (height <= WORLD.SEA_LEVEL) return BIOME.OCEAN;
     if (height < 0.5) return BIOME.BEACH;
-    if (height > WORLD.MAX_HEIGHT * 0.62) return BIOME.SNOW;
-    if (height > WORLD.MAX_HEIGHT * 0.42) return temp < 0.32 ? BIOME.SNOW : BIOME.ROCK;
+    if (height > WORLD.MAX_HEIGHT * 0.74) return BIOME.SNOW;
+    if (height > WORLD.MAX_HEIGHT * 0.56) return temp < 0.32 ? BIOME.SNOW : BIOME.ROCK;
     // lowland & midland biomes by climate
     if (temp < 0.28) return moist > 0.5 ? BIOME.TAIGA : BIOME.TUNDRA;
     if (temp < 0.55) return moist > 0.55 ? BIOME.FOREST : BIOME.GRASS;
@@ -144,32 +144,40 @@ export class World {
     }
   }
 
+  // Target-count scattering: sample random points and accept by biome weight, so the
+  // world stays richly forested regardless of how the climate bands shake out.
   _scatterTrees() {
-    const n = this.seg;
-    for (let iy = 0; iy < n; iy += 2) {
-      for (let ix = 0; ix < n; ix += 2) {
-        const id = this.idx(ix, iy);
-        const bm = this.biome[id];
-        const chance = bm === BIOME.JUNGLE ? 0.26 : bm === BIOME.FOREST ? 0.18 : bm === BIOME.TAIGA ? 0.12 : 0;
-        if (chance && this.rng.chance(chance)) {
-          const x = (ix / n - 0.5) * this.size, z = (iy / n - 0.5) * this.size;
-          this.trees.push({ x, z, y: this.h[id], wood: 8, max: 8, regrow: 0, s: this.rng.range(0.75, 1.35) });
-        }
+    const target = Math.round((this.size / 640) ** 2 * 750);   // scales with world area
+    const weight = {
+      [BIOME.JUNGLE]: 1.0, [BIOME.FOREST]: 0.9, [BIOME.TAIGA]: 0.6,
+      [BIOME.GRASS]: 0.12, [BIOME.SAVANNA]: 0.08,              // sparse lone trees
+    };
+    let tries = 0;
+    while (this.trees.length < target && tries < target * 40) {
+      tries++;
+      const x = this.rng.range(-this.size / 2, this.size / 2);
+      const z = this.rng.range(-this.size / 2, this.size / 2);
+      const w = weight[this.biomeAt(x, z)] || 0;
+      if (w && this.rng.chance(w)) {
+        this.trees.push({ x, z, y: this.heightAt(x, z), wood: 8, max: 8, regrow: 0, s: this.rng.range(0.75, 1.35) });
       }
     }
   }
 
   _scatterRocks() {
-    const n = this.seg;
-    for (let iy = 0; iy < n; iy += 3) {
-      for (let ix = 0; ix < n; ix += 3) {
-        const id = this.idx(ix, iy);
-        const bm = this.biome[id];
-        const chance = bm === BIOME.ROCK ? 0.09 : bm === BIOME.DESERT ? 0.035 : bm === BIOME.TUNDRA ? 0.04 : (bm === BIOME.GRASS || bm === BIOME.SAVANNA) ? 0.02 : 0;
-        if (chance && this.rng.chance(chance)) {
-          const x = (ix / n - 0.5) * this.size, z = (iy / n - 0.5) * this.size;
-          this.rocks.push({ x, z, y: this.h[id], stone: 10, max: 10, regrow: 0, s: this.rng.range(0.6, 1.6) });
-        }
+    const target = Math.round((this.size / 640) ** 2 * 200);
+    const weight = {
+      [BIOME.ROCK]: 1.0, [BIOME.TUNDRA]: 0.5, [BIOME.DESERT]: 0.4,
+      [BIOME.GRASS]: 0.12, [BIOME.SAVANNA]: 0.12, [BIOME.SNOW]: 0.3,
+    };
+    let tries = 0;
+    while (this.rocks.length < target && tries < target * 40) {
+      tries++;
+      const x = this.rng.range(-this.size / 2, this.size / 2);
+      const z = this.rng.range(-this.size / 2, this.size / 2);
+      const w = weight[this.biomeAt(x, z)] || 0;
+      if (w && this.rng.chance(w)) {
+        this.rocks.push({ x, z, y: this.heightAt(x, z), stone: 10, max: 10, regrow: 0, s: this.rng.range(0.6, 1.6) });
       }
     }
   }

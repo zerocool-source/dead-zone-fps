@@ -6,7 +6,7 @@ import { Being } from './being.js';
 import { Tribe } from './tribe.js';
 import { Soul, Voices } from './soul.js';
 import { Chronicle } from './chronicle.js';
-import { makeName } from './names.js';
+import { makeName, makeTribeName } from './names.js';
 import {
   DAY_SECONDS, YEAR_DAYS, TIME_SCALES, POP, FOOD, TECH, LIFE, RES, FAUNA, JOBS, RACES, TRIBES, COMBAT,
   BUILDINGS,
@@ -20,7 +20,7 @@ export class Sim {
     this.chronicle = new Chronicle();
     this.yearDays = YEAR_DAYS;
 
-    this.day = 0; this.year = 0;
+    this.day = 0.32; this.year = 0;   // begin mid-morning, in daylight
     this.speedIndex = 1;
     this.beings = [];
     this.tribes = [];
@@ -54,6 +54,11 @@ export class Sim {
       home.y = this.world.heightAt(home.x, home.z);
       homes.push(home);
       const tribe = new Tribe(this.rng, key, race, home);
+      // keep tribe names distinct — reroll while another tribe shares the prefix
+      let guard = 0;
+      while (guard++ < 20 && this.tribes.some(t => t.name.slice(0, 4) === tribe.name.slice(0, 4))) {
+        tribe.name = makeTribeName(this.rng);
+      }
       this.tribes.push(tribe);
       this._seedMembers(tribe);
       this.chronicle.add(0, 0, '🏕️', `The ${tribe.name} (${race.name}) settle the ${race.biome}.`, 'epoch');
