@@ -40,6 +40,10 @@ export class HUD {
         <div style="color:var(--gold);font-size:18px;font-weight:700;letter-spacing:1px;" id="hud-year">Year 0</div>
         <div style="color:var(--text-dim);font-size:10px;letter-spacing:1px;" id="hud-speed">Lived time</div>
       </div>
+      <div style="display:flex;flex-direction:column;align-items:center;min-width:52px;">
+        <div style="font-size:19px;" id="hud-clock">🌅</div>
+        <div style="color:var(--text-dim);font-size:9px;letter-spacing:1px;" id="hud-phase">DAWN</div>
+      </div>
       <div style="display:flex;gap:5px;">${speedBtns}</div>
       <div style="width:1px;height:30px;background:var(--panel-edge);"></div>
       <div style="display:flex;flex-direction:column;align-items:center;min-width:70px;">
@@ -57,6 +61,8 @@ export class HUD {
       btn.addEventListener('click', () => this.onSpeed(+btn.dataset.sp)));
     this.elYear = top.querySelector('#hud-year');
     this.elSpeed = top.querySelector('#hud-speed');
+    this.elClock = top.querySelector('#hud-clock');
+    this.elPhase = top.querySelector('#hud-phase');
     this.elPop = top.querySelector('#hud-pop');
     this.elFood = top.querySelector('#res-food');
     this.elWood = top.querySelector('#res-wood');
@@ -76,12 +82,47 @@ export class HUD {
       <div style="display:flex;justify-content:space-between;margin-top:3px;">
         <span id="faith-val" style="color:var(--text);font-size:11px;">0</span>
         <span id="believers" style="color:var(--text-dim);font-size:10px;">0 believers</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;border-top:1px solid var(--panel-edge);padding-top:7px;">
+        <span style="font-size:10px;letter-spacing:1px;color:var(--gold-dim);">SOULS</span>
+        <button id="llm-btn" class="pointer" style="background:none;border:1px solid var(--panel-edge);color:var(--text-dim);border-radius:4px;padding:2px 8px;cursor:pointer;font-family:inherit;font-size:10px;pointer-events:auto;">offline · connect</button>
+      </div>
+      <div id="llm-panel" style="display:none;margin-top:6px;">
+        <input id="llm-key" type="password" placeholder="Anthropic API key (sk-ant-…)" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.06);border:1px solid var(--panel-edge);border-radius:4px;color:var(--text);font-size:10px;padding:5px 7px;pointer-events:auto;" />
+        <div style="display:flex;gap:5px;margin-top:5px;">
+          <button id="llm-save" style="flex:1;background:rgba(232,200,122,0.15);border:1px solid var(--gold-dim);color:var(--gold);border-radius:4px;padding:3px;cursor:pointer;font-family:inherit;font-size:10px;pointer-events:auto;">Connect</button>
+          <button id="llm-off" style="background:none;border:1px solid var(--panel-edge);color:var(--text-dim);border-radius:4px;padding:3px 8px;cursor:pointer;font-family:inherit;font-size:10px;pointer-events:auto;">Off</button>
+        </div>
+        <div id="llm-note" style="font-size:9px;color:var(--text-dim);margin-top:4px;line-height:1.3;">Key stays in your browser (localStorage). Leaders &amp; the possessed then speak real Claude lines.</div>
       </div>`;
     root.appendChild(gp);
     this.elGodTitle = gp.querySelector('#god-title');
     this.elFaithFill = gp.querySelector('#faith-fill');
     this.elFaithVal = gp.querySelector('#faith-val');
     this.elBelievers = gp.querySelector('#believers');
+    // souls / LLM connect panel
+    gp.classList.add('pointer');
+    this.onConnectLLM = async () => false;
+    this.onDisconnectLLM = () => {};
+    this.elLlmBtn = gp.querySelector('#llm-btn');
+    this.elLlmPanel = gp.querySelector('#llm-panel');
+    this.elLlmKey = gp.querySelector('#llm-key');
+    this.elLlmBtn.addEventListener('click', () => {
+      this.elLlmPanel.style.display = this.elLlmPanel.style.display === 'none' ? 'block' : 'none';
+    });
+    gp.querySelector('#llm-save').addEventListener('click', async () => {
+      const key = this.elLlmKey.value.trim();
+      if (!key) return;
+      this.setLLMStatus('testing…');
+      const ok = await this.onConnectLLM(key);
+      this.setLLMStatus(ok ? 'claude ✦' : 'key failed');
+      if (ok) this.elLlmPanel.style.display = 'none';
+    });
+    gp.querySelector('#llm-off').addEventListener('click', () => {
+      this.onDisconnectLLM();
+      this.setLLMStatus('offline · connect');
+      this.elLlmPanel.style.display = 'none';
+    });
 
     // ---- power palette (left) ----
     const pal = this._el('div', 'panel pointer');
@@ -255,12 +296,22 @@ export class HUD {
 
   _flash(msg) { this.elHint.textContent = msg; }
   message(msg) { this._flash(msg); }
+  setLLMStatus(s) {
+    this.elLlmBtn.textContent = s;
+    this.elLlmBtn.style.color = s.startsWith('claude') ? 'var(--gold)' : 'var(--text-dim)';
+  }
 
   // ---------- dynamic refresh ----------
   update() {
     const s = this.sim, g = this.god;
     this.elYear.textContent = `Year ${s.year}`;
     this.elSpeed.textContent = TIME_LABELS[s.speedIndex].replace(/^[^ ]+ /, '') || 'Paused';
+    if (this.elClock) {
+      const f = s.day % 1;
+      const [icon, phase] = f < 0.22 ? ['🌙', 'NIGHT'] : f < 0.3 ? ['🌅', 'DAWN']
+        : f < 0.62 ? ['☀️', 'DAY'] : f < 0.74 ? ['🌾', 'DUSK WORK'] : f < 0.86 ? ['🌇', 'EVENING'] : ['🌙', 'NIGHT'];
+      this.elClock.textContent = icon; this.elPhase.textContent = phase;
+    }
     this.elPop.textContent = s.population;
     const ft = (this.selected && this.selected.tribe) || s.tribes[0];
     if (this.elFood && ft) {
@@ -434,6 +485,7 @@ export class HUD {
       'chopping wood': 'chopping wood', 'mining stone': 'mining stone', hunting: 'hunting game',
       hauling: 'hauling goods home', building: 'building a home', farming: 'working the fields',
       playing: 'playing', leading: 'leading the people', fighting: 'in battle', fleeing: 'fleeing danger',
+      patrolling: 'standing guard',
     };
     return (verbs[b.action] || b.action) + '.';
   }

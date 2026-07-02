@@ -116,7 +116,7 @@ export class Renderer {
       'chopping wood': ['🪓', '#8a6a3a'], 'mining stone': ['⛏', '#7a7a82'], hunting: ['🏹', '#9a5a3a'],
       hauling: ['📦', '#a07a4a'], building: ['🔨', '#b08040'], farming: ['🌾', '#caa24a'],
       playing: ['🙂', '#7aa0c0'], leading: ['👑', '#d8b85a'],
-      fighting: ['⚔', '#d0594a'], fleeing: ['🏃', '#d0a04a'],
+      fighting: ['⚔', '#d0594a'], fleeing: ['🏃', '#d0a04a'], patrolling: ['🛡', '#7a8a9a'],
     };
     this.bubbleMats = {};
     for (const k in B) {
@@ -212,11 +212,39 @@ export class Renderer {
     for (const tribe of this.sim.tribes) {
       for (const b of tribe.buildings) {
         if (b.type === 'hut') continue;
-        let m = this.buildingMeshes.get(b);
-        if (!m) { m = this._makeBuildingMesh(b.type); m.position.set(b.x, b.y, b.z); this.structGroup.add(m); this.buildingMeshes.set(b, m); }
-        m.scale.y = b.built ? 1 : (0.25 + 0.75 * Math.min(1, b.progress / b.work));
+        let rec = this.buildingMeshes.get(b);
+        if (!rec) {
+          const grp = new THREE.Group();
+          const mesh = this._makeBuildingMesh(b.type);
+          const scaffold = this._makeScaffold();
+          grp.add(mesh); grp.add(scaffold);
+          grp.position.set(b.x, b.y, b.z);
+          this.structGroup.add(grp);
+          rec = { mesh, scaffold };
+          this.buildingMeshes.set(b, rec);
+        }
+        rec.mesh.scale.y = b.built ? 1 : (0.2 + 0.8 * Math.min(1, b.progress / b.work));
+        rec.scaffold.visible = !b.built;
       }
     }
+  }
+
+  // a simple wooden work-frame shown while a site is under construction
+  _makeScaffold() {
+    const g = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color: 0xa08050, roughness: 1 });
+    for (const dx of [-1.6, 1.6]) for (const dz of [-1.6, 1.6]) {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 3.2, 5), mat);
+      pole.position.set(dx, 1.6, dz);
+      g.add(pole);
+    }
+    for (const [a, b2] of [[[-1.6, 1.6], [1.6, 1.6]], [[-1.6, -1.6], [1.6, -1.6]]]) {
+      const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 3.2, 5), mat);
+      bar.rotation.z = Math.PI / 2;
+      bar.position.set(0, 2.6, a[1]);
+      g.add(bar);
+    }
+    return g;
   }
 
   _makeBuildingMesh(type) {
@@ -228,6 +256,8 @@ export class Renderer {
     };
     if (type === 'hut' && this._has('hut')) { g.add(this.assets.clone('hut')); return g; }
     if (type === 'totem' && this._has('totem')) { g.add(this.assets.clone('totem')); return g; }
+    if (type === 'granary' && this._has('granary')) { g.add(this.assets.clone('granary')); return g; }
+    if (type === 'watchtower' && this._has('watchtower')) { g.add(this.assets.clone('watchtower')); return g; }
     switch (type) {
       case 'storehouse': { box(4, 2, 3, WOOD, 0); const r = box(4.4, 0.4, 3.4, DARK, 2); break; }
       case 'granary': { box(2, 0.6, 2, WOOD, 0); const b = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 1.8, 10), new THREE.MeshStandardMaterial({ color: STRAW, roughness: 1 })); b.position.y = 1.5; b.castShadow = true; g.add(b); const r = new THREE.Mesh(new THREE.ConeGeometry(1.4, 1, 10), new THREE.MeshStandardMaterial({ color: DARK })); r.position.y = 2.9; g.add(r); break; }
@@ -653,6 +683,13 @@ export class Renderer {
       } else {
         g.userData.body.position.y = g.userData.bodyBaseY + (b.moving ? Math.abs(Math.sin(performance.now() * 0.011 + b.id)) * 0.08 : 0);
       }
+      // work motion: a rhythmic strike/bow while chopping, mining, or building
+      const working = !b.moving && (b.action === 'chopping wood' || b.action === 'mining stone' || b.action === 'building' || b.action === 'farming');
+      g.userData.body.rotation.x = working && dist < 160
+        ? Math.max(0, Math.sin(performance.now() * 0.008 + b.id)) * 0.42
+        : 0;
+      // visible carried goods (log / stone / food) while hauling
+      this._syncCarry(g, b);
       // thought bubble (LOD: hide when far to keep the view clean)
       const key = this._bubbleKey(b);
       if (key !== g.userData.bubbleKey) { g.userData.bubble.material = this.bubbleMats[key]; g.userData.bubbleKey = key; }
@@ -662,6 +699,34 @@ export class Renderer {
     for (const [id, g] of this.beingMeshes) {
       if (!live.has(id)) { this.scene.remove(g); this.beingMeshes.delete(id); if (this.selected && this.selected.id === id) this.clearSelection(); }
     }
+  }
+
+  // small shared meshes for goods a being visibly carries
+  _carryMesh(type) {
+    if (!this._carryGeo) {
+      this._carryGeo = {
+        wood: [new THREE.CylinderGeometry(0.11, 0.11, 1.1, 6), new THREE.MeshStandardMaterial({ color: 0x6a4a2a, roughness: 1 })],
+        stone: [new THREE.IcosahedronGeometry(0.26, 0), new THREE.MeshStandardMaterial({ color: 0x8f8b85, roughness: 1 })],
+        food: [new THREE.SphereGeometry(0.24, 8, 8), new THREE.MeshStandardMaterial({ color: 0x9a3a30, roughness: 0.8 })],
+      };
+    }
+    const [geo, mat] = this._carryGeo[type] || this._carryGeo.food;
+    const m = new THREE.Mesh(geo, mat);
+    if (type === 'wood') m.rotation.z = Math.PI / 2;
+    m.castShadow = true;
+    return m;
+  }
+  _syncCarry(g, b) {
+    const type = b.carrying ? b.carrying.type : null;
+    if (g.userData.carryType === type) return;
+    if (g.userData.carry) { g.remove(g.userData.carry); g.userData.carry = null; }
+    if (type) {
+      const m = this._carryMesh(type);
+      m.position.set(0.32, (g.userData.bodyH || 1.6) * 0.62, 0.28); // in their arms
+      g.add(m);
+      g.userData.carry = m;
+    }
+    g.userData.carryType = type;
   }
 
   setSelected(b) { this.selected = b; }

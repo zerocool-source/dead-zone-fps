@@ -12,6 +12,7 @@ export const ACTION = {
   SOCIAL: 'talking', MATE: 'courting', WANDER: 'wandering', SEEK: 'seeking', GRIEVE: 'grieving',
   CHOP: 'chopping wood', MINE: 'mining stone', HUNT: 'hunting', HAUL: 'hauling', BUILD: 'building',
   FARM: 'farming', PLAY: 'playing', LEAD: 'leading', FIGHT: 'fighting', FLEE: 'fleeing',
+  PATROL: 'patrolling',
 };
 
 export class Being {
@@ -246,7 +247,7 @@ export class Being {
     const h = this.tribe ? this.tribe.home : sim.home;
     this.actTarget = { kind: 'wander' };
     this.tx = h.x + this.rng.range(-12, 12); this.tz = h.z + this.rng.range(-12, 12);
-    return ACTION.LEAD;
+    return ACTION.PATROL;
   }
   _goLead(sim) {
     // a leader walks the village, lifting spirits and binding the people together

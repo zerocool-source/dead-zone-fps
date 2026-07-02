@@ -15,9 +15,11 @@ export const RACES = {
   emberfolk: { name: 'Emberfolk', mesh: 'ember', hue: 0.03, build: 0.94, biome: 'desert', trait: { brave: 0.4 } },
   frostborn: { name: 'Frostborn', mesh: 'frost', hue: 0.60, build: 1.14, biome: 'taiga',  trait: { brave: 0.25, social: -0.1 } },
   thornkin:  { name: 'Thornkin',  mesh: 'thorn', hue: 0.32, build: 1.05, biome: 'jungle', trait: { curious: 0.4 } },
+  ashkin:    { name: 'Ashkin',    mesh: 'ash',   hue: 0.98, build: 1.10, biome: 'rock',    trait: { brave: 0.35, devout: 0.2 } },
+  sunkin:    { name: 'Sunkin',    mesh: 'sun',   hue: 0.11, build: 0.97, biome: 'savanna', trait: { social: 0.3, curious: 0.25 } },
 };
 
-export const TRIBES = { COUNT: 6, START_POP: 9 };
+export const TRIBES = { COUNT: 8, START_POP: 9 };
 
 // One in-game DAY = this many real seconds at 1x speed (slowed for day-to-day life).
 export const DAY_SECONDS = 55;

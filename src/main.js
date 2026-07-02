@@ -5,6 +5,7 @@ import { God } from './god.js';
 import { Renderer } from './render.js';
 import { HUD } from './hud.js';
 import { AssetStore } from './assets.js';
+import { connectClaude, savedKey, saveKey, testKey } from './llm.js';
 
 const seed = new URLSearchParams(location.search).get('seed') || 'pangaea-' + Math.floor(Math.random() * 1e6);
 
@@ -59,6 +60,20 @@ async function boot() {
   hud.onSelectLink = (b) => { renderer.setSelected(b); renderer.focusOn(b); if (b.tribe) focusTribe = b.tribe; };
   hud.onBuild = (t) => { buildType = t; if (!t) renderer.hideGhost(); };
   hud.onFocusTribe = (t) => { focusTribe = t; };
+
+  // LLM souls: connect/disconnect Claude for promoted beings
+  hud.onConnectLLM = async (key) => {
+    try {
+      const ok = await testKey(key);
+      if (!ok) return false;
+      saveKey(key);
+      sim.voices.setLLM(connectClaude(key));
+      return true;
+    } catch { return false; }
+  };
+  hud.onDisconnectLLM = () => { saveKey(''); sim.voices.setLLM(null); };
+  const existing = savedKey();
+  if (existing) { sim.voices.setLLM(connectClaude(existing)); hud.setLLMStatus('claude ✦'); }
 
   requestAnimationFrame(loop);
 }
