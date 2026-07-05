@@ -260,6 +260,8 @@ export class HUD {
         <span>${costStr}</span>
         ${ft ? `<span style="color:var(--text-dim);font-size:10px;">for ${ft.name}</span>` : ''}
       </div>
+      ${d.tech && ft && !ft.tech.includes(d.tech) ? `<div style="margin-top:5px;font-size:11px;color:#d0594a;">🔒 Requires ${d.tech.charAt(0).toUpperCase() + d.tech.slice(1)} — they must discover it first</div>` : ''}
+      ${d.water === 'water' ? `<div style="margin-top:4px;font-size:10px;color:#6aa0c8;">Placed on water, near a finished dock</div>` : d.water === 'shore' ? `<div style="margin-top:4px;font-size:10px;color:#6aa0c8;">Placed on the shoreline</div>` : ''}
       ${placing ? `<div style="margin-top:7px;font-size:10px;color:var(--gold-dim);letter-spacing:1px;">CLICK THE LAND TO PLACE · ESC TO CANCEL</div>` : ''}`;
     this.buildDetail.style.display = 'block';
   }
@@ -320,7 +322,11 @@ export class HUD {
       this.elStone.textContent = Math.floor(ft.res.stone);
     }
     if (this.buildBtns && ft) {
-      this.buildBtns.forEach((b) => { b.style.opacity = s.canAfford(ft, b.dataset.build) ? '1' : '0.4'; });
+      this.buildBtns.forEach((b) => {
+        const locked = !s.hasTech(ft, b.dataset.build);
+        b.style.opacity = locked ? '0.25' : (s.canAfford(ft, b.dataset.build) ? '1' : '0.45');
+        b.style.filter = locked ? 'grayscale(1)' : 'none';
+      });
     }
     this._renderTribes();
     this.speedBtns.forEach((b, i) => {

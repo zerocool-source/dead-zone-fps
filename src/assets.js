@@ -16,6 +16,10 @@ const MANIFEST = {
   thorn:    { file: 'thorn.glb',    height: 2.0 }, // Thornkin
   ash:      { file: 'ash.glb',      height: 1.95 }, // Ashkin
   sun:      { file: 'sun.glb',      height: 2.0 },  // Sunkin
+  tide:     { file: 'tide.glb',     height: 1.9 },  // Tidefolk
+  mire:     { file: 'mire.glb',     height: 1.85 }, // Mirekin
+  well:     { file: 'well.glb',     height: 2.2 },
+  ship:     { file: 'ship.glb',     height: 3.0 },
   granary:  { file: 'granary.glb',  height: 3.0 },
   watchtower: { file: 'watchtower.glb', height: 5.0 },
   deer:     { file: 'deer.glb',     height: 1.7 },

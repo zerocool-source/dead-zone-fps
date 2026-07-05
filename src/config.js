@@ -1,11 +1,11 @@
 // AEON — global tuning constants. One place to balance the whole sim.
 
 export const WORLD = {
-  SIZE: 780,          // world units across (a vast continent)
-  SEG: 288,           // terrain grid resolution
+  SIZE: 1280,         // world units across (a truly huge continent)
+  SEG: 320,           // terrain grid resolution
   SEA_LEVEL: 0.0,     // height at/below this is ocean
-  MAX_HEIGHT: 32,     // peak mountain height in world units
-  ISLAND_FALLOFF: 1.2,// how hard the coast drops to sea
+  MAX_HEIGHT: 36,     // peak mountain height in world units
+  ISLAND_FALLOFF: 1.15,// how hard the coast drops to sea
 };
 
 // Playable peoples. `mesh` maps to an asset key (falls back to 'being'); hue tints them,
@@ -17,9 +17,11 @@ export const RACES = {
   thornkin:  { name: 'Thornkin',  mesh: 'thorn', hue: 0.32, build: 1.05, biome: 'jungle', trait: { curious: 0.4 } },
   ashkin:    { name: 'Ashkin',    mesh: 'ash',   hue: 0.98, build: 1.10, biome: 'rock',    trait: { brave: 0.35, devout: 0.2 } },
   sunkin:    { name: 'Sunkin',    mesh: 'sun',   hue: 0.11, build: 0.97, biome: 'savanna', trait: { social: 0.3, curious: 0.25 } },
+  tidefolk:  { name: 'Tidefolk',  mesh: 'tide',  hue: 0.55, build: 1.0,  biome: 'beach',   trait: { curious: 0.3, kind: 0.2 } },
+  mirekin:   { name: 'Mirekin',   mesh: 'mire',  hue: 0.40, build: 0.95, biome: 'tundra',  trait: { devout: 0.3, social: -0.15 } },
 };
 
-export const TRIBES = { COUNT: 8, START_POP: 9 };
+export const TRIBES = { COUNT: 10, START_POP: 9 };
 
 // One in-game DAY = this many real seconds at 1x speed (slowed for day-to-day life).
 export const DAY_SECONDS = 55;
@@ -108,6 +110,7 @@ export const TECH = [
   { id: 'language', name: 'Language',    needPop: 8,  needInsight: 680,  era: 'Stone',      desc: 'Stories, names, shared memory.' },
   { id: 'ritual',   name: 'Ritual',      needPop: 10, needInsight: 1150, era: 'Stone',      desc: 'They begin to wonder about you.' },
   { id: 'farming',  name: 'Farming',     needPop: 12, needInsight: 1900, era: 'Stone',      desc: 'Food they grow themselves.' },
+  { id: 'sailing',  name: 'Sailing',     needPop: 12, needInsight: 2300, era: 'Stone',      desc: 'Boats to fish the deep water and cross the sea.' },
   { id: 'pottery',  name: 'Pottery',     needPop: 14, needInsight: 2700, era: 'Stone',      desc: 'Storage, surplus, trade goods.' },
   { id: 'bronze',   name: 'Bronze Working', needPop: 16, needInsight: 3800, era: 'Bronze', desc: 'Metal tools and the first blades. The Bronze Age dawns.' },
   { id: 'writing',  name: 'Writing',     needPop: 18, needInsight: 5200, era: 'Bronze',     desc: 'Law, record, and memory beyond a lifetime.' },
@@ -147,8 +150,16 @@ export const BUILDINGS = {
     desc: 'A wall of sharpened logs.', effect: '+1 defense vs raids & beasts' },
   watchtower: { name: 'Watchtower',   icon: '🗼', cost: { wood: 18, stone: 6 },  work: 10, mesh: null, defense: 3,
     desc: 'A lookout that guards the village.', effect: '+3 defense, spots danger' },
+  well:       { name: 'Well',         icon: '⛲', cost: { wood: 6, stone: 8 },   work: 6,  mesh: 'well', produces: { food: 2 }, heal: 8,
+    desc: 'Clean water at the heart of the village.', effect: '+2 food / day · heals the nearby' },
+  circle:     { name: 'Elder Circle', icon: '🔮', cost: { stone: 12, wood: 4 },  work: 8,  mesh: null, insight: 6, tech: 'language',
+    desc: 'Where the wise gather to think and teach.', effect: '+6 insight / day (faster tech)' },
+  dock:       { name: 'Dock',         icon: '⚓', cost: { wood: 16 },            work: 8,  mesh: null, produces: { food: 6 }, water: 'shore', tech: 'tools',
+    desc: 'A pier for fishers. Must touch the water.', effect: '+6 food / day · enables ships' },
+  ship:       { name: 'Fishing Ship', icon: '⛵', cost: { wood: 22 },            work: 10, mesh: 'ship', produces: { food: 9 }, water: 'water', needs: 'dock', tech: 'sailing',
+    desc: 'A sailed canoe. Build on water near your dock.', effect: '+9 food / day from the deep' },
 };
-export const BUILD_ORDER = ['hut', 'storehouse', 'granary', 'farm', 'lodge', 'mine', 'totem', 'monument', 'palisade', 'watchtower'];
+export const BUILD_ORDER = ['hut', 'well', 'storehouse', 'granary', 'farm', 'lodge', 'mine', 'circle', 'dock', 'ship', 'totem', 'monument', 'palisade', 'watchtower'];
 
 export const GOD = {
   FAITH_START: 20,

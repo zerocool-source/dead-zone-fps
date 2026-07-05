@@ -128,8 +128,9 @@ export class World {
   }
 
   _scatterFood() {
+    const target = Math.round((this.size / 640) ** 2 * FOOD.BUSH_COUNT);
     let tries = 0;
-    while (this.bushes.length < FOOD.BUSH_COUNT && tries < FOOD.BUSH_COUNT * 30) {
+    while (this.bushes.length < target && tries < target * 30) {
       tries++;
       const x = this.rng.range(-this.size / 2, this.size / 2);
       const z = this.rng.range(-this.size / 2, this.size / 2);

@@ -89,7 +89,7 @@ function wireInput() {
     // live placement ghost
     if (buildType) {
       const g = renderer.raycastGround(ndcOf(e));
-      if (g) renderer.showGhost(buildType, g.x, g.z, sim.world.isLand(g.x, g.z) && sim.canAfford(focusTribe, buildType));
+      if (g) renderer.showGhost(buildType, g.x, g.z, !sim.siteProblem(focusTribe, buildType, g.x, g.z));
       else renderer.hideGhost();
     }
   });
@@ -114,11 +114,10 @@ function wireInput() {
 function placeBuild(ndc) {
   const g = renderer.raycastGround(ndc);
   if (!g) return;
-  if (!sim.world.isLand(g.x, g.z)) { hud.message('Cannot build on water.'); return; }
+  const problem = sim.siteProblem(focusTribe, buildType, g.x, g.z);
+  if (problem) { hud.message(problem); return; }
   if (sim.placeBuilding(focusTribe, buildType, g.x, g.z)) {
     renderer.spawnEffect(g.x, g.z, 0xe8c87a, 4);
-  } else {
-    hud.message(`The ${focusTribe.name} lack the resources for that.`);
   }
 }
 function cancelBuild() {

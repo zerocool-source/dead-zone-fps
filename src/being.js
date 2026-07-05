@@ -304,7 +304,11 @@ export class Being {
     if (d > 0.4) {
       const step = Math.min(d, this.speed * dDays);
       let nx = this.x + dx / d * step, nz = this.z + dz / d * step;
-      if (!sim.world.isLand(nx, nz)) { nx = this.x; nz = this.z; this.tx = sim.home.x; this.tz = sim.home.z; }
+      if (!sim.world.isLand(nx, nz)) {
+        // blocked by water: shipwrights work from the shore; everyone else heads home
+        if (this.actTarget && this.actTarget.kind === 'construct') { this.moving = false; this.y = sim.world.heightAt(this.x, this.z); this.heading = Math.atan2(dz, dx); return; }
+        nx = this.x; nz = this.z; this.tx = (this.tribe ? this.tribe.home.x : sim.home.x); this.tz = (this.tribe ? this.tribe.home.z : sim.home.z);
+      }
       this.x = nx; this.z = nz;
       this.moving = true;
     } else this.moving = false;
@@ -388,8 +392,9 @@ export class Being {
       if (reached) { this.actTarget = null; this._think = this.rng.range(0.2, 0.4); }
     } else if (k === 'construct') {
       const site = this.actTarget.ref;
+      const near = Math.hypot(this.tx - this.x, this.tz - this.z) < (site && site.type === 'ship' ? 9 : 1.6);
       if (!site || site.built) { this.actTarget = null; this._think = 0; }
-      else if (reached) { this.action = ACTION.BUILD; sim.constructAt(site, this, dDays); if (site.built) { this.actTarget = null; this._think = 0; } }
+      else if (near) { this.action = ACTION.BUILD; sim.constructAt(site, this, dDays); if (site.built) { this.actTarget = null; this._think = 0; } }
     } else if (k === 'build' && reached) {
       sim.tryBuild(this.actTarget.ref, this);
       this.actTarget = null; this._think = this.rng.range(0.3, 0.6);

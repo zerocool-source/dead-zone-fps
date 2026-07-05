@@ -86,8 +86,10 @@ export class Sim {
   }
 
   _seedFauna() {
+    const areaScale = (this.world.size / 640) ** 2;
     for (const [type, def] of Object.entries(FAUNA.TYPES)) {
-      for (let i = 0; i < def.count; i++) {
+      const count = Math.round(def.count * areaScale);
+      for (let i = 0; i < count; i++) {
         const p = this.world.spawnInBiome(this.rng, this.rng.pick(def.biomes), [], 0) || this.world.spawnPoint(this.rng);
         this.fauna.push({ type, def, x: p.x, z: p.z, y: this.world.heightAt(p.x, p.z), tx: p.x, tz: p.z, alive: true, respawn: 0, health: def.health });
       }
@@ -262,14 +264,43 @@ export class Sim {
     const c = BUILDINGS[type].cost;
     return tribe.res.wood >= (c.wood || 0) && tribe.res.stone >= (c.stone || 0) && tribe.res.food >= (c.food || 0);
   }
+  hasTech(tribe, type) {
+    const t = BUILDINGS[type].tech;
+    return !t || tribe.tech.includes(t);
+  }
+  // why a site is invalid, or null if it's fine — drives the ghost color + message
+  siteProblem(tribe, type, x, z) {
+    const def = BUILDINGS[type];
+    if (!this.hasTech(tribe, type)) {
+      const t = TECH.find(tc => tc.id === def.tech);
+      return `The ${tribe.name} have not yet discovered ${t ? t.name : def.tech}.`;
+    }
+    if (!this.canAfford(tribe, type)) return `The ${tribe.name} lack the resources.`;
+    if (def.water === 'water') {
+      if (this.world.isLand(x, z)) return 'A ship must be built on the water.';
+      if (def.needs === 'dock' && !tribe.buildings.some(b => b.type === 'dock' && b.built && Math.hypot(b.x - x, b.z - z) < 26)) {
+        return 'Ships must be laid down within reach of a finished dock.';
+      }
+    } else if (def.water === 'shore') {
+      if (!this.world.isLand(x, z)) return 'A dock stands on the shore, not the sea.';
+      let nearWater = false;
+      for (let a = 0; a < 8; a++) {
+        if (!this.world.isLand(x + Math.cos(a * 0.785) * 5, z + Math.sin(a * 0.785) * 5)) { nearWater = true; break; }
+      }
+      if (!nearWater) return 'A dock must touch the water.';
+    } else if (!this.world.isLand(x, z)) {
+      return 'Cannot build on water.';
+    }
+    return null;
+  }
   placeBuilding(tribe, type, x, z) {
     if (!tribe || !BUILDINGS[type]) return false;
-    if (!this.world.isLand(x, z)) return false;
-    if (!this.canAfford(tribe, type)) return false;
-    const c = BUILDINGS[type].cost;
-    tribe.res.wood -= (c.wood || 0); tribe.res.stone -= (c.stone || 0); tribe.res.food -= (c.food || 0);
-    tribe.buildings.push({ type, x, z, y: this.world.heightAt(x, z), built: false, progress: 0, work: BUILDINGS[type].work });
-    this.chronicle.add(this.day, this.year, '🏗️', `You mark out a ${BUILDINGS[type].name} for the ${tribe.name}.`, 'god');
+    if (this.siteProblem(tribe, type, x, z)) return false;
+    const def = BUILDINGS[type];
+    tribe.res.wood -= (def.cost.wood || 0); tribe.res.stone -= (def.cost.stone || 0); tribe.res.food -= (def.cost.food || 0);
+    const y = def.water === 'water' ? 0.05 : this.world.heightAt(x, z);
+    tribe.buildings.push({ type, x, z, y, built: false, progress: 0, work: def.work });
+    this.chronicle.add(this.day, this.year, '🏗️', `You mark out a ${def.name} for the ${tribe.name}.`, 'god');
     return true;
   }
   // nearest unbuilt player site for a tribe's builders
@@ -301,7 +332,15 @@ export class Sim {
         if (!b.built) continue;
         const def = BUILDINGS[b.type];
         if (def.produces) for (const k in def.produces) tribe.res[k] = (tribe.res[k] || 0) + def.produces[k] * dDays;
+        if (def.insight) tribe.insight += def.insight * dDays;
         if (def.faith) for (const m of this.membersOf(tribe)) m.godAwareness = Math.min(1, m.godAwareness + def.faith * dDays * 0.4);
+        if (def.heal) {
+          for (const m of this.beings) {
+            if (m.tribe === tribe && m.health < 100 && Math.hypot(m.x - b.x, m.z - b.z) < 14) {
+              m.health = Math.min(100, m.health + def.heal * dDays);
+            }
+          }
+        }
       }
     }
   }

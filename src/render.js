@@ -33,10 +33,12 @@ export class Renderer {
 
   mount(parent) {
     const w = window.innerWidth, h = window.innerHeight;
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    // ?lowfx=1 — performance mode for low-end machines: no shadows, no AA, 1x pixels
+    this.lowfx = new URLSearchParams(location.search).has('lowfx');
+    this.renderer = new THREE.WebGLRenderer({ antialias: !this.lowfx });
+    this.renderer.setPixelRatio(this.lowfx ? 1 : Math.min(devicePixelRatio, 2));
     this.renderer.setSize(w, h);
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.enabled = !this.lowfx;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     parent.appendChild(this.renderer.domElement);
     this.canvas = this.renderer.domElement;
@@ -61,7 +63,7 @@ export class Renderer {
     this.hemi = new THREE.HemisphereLight(0xbcd0ff, 0x4a3826, 0.7);
     this.scene.add(this.hemi);
     this.sun = new THREE.DirectionalLight(0xffe6b8, 1.5);
-    this.sun.castShadow = true;
+    this.sun.castShadow = !this.lowfx;
     this.sun.shadow.mapSize.set(1024, 1024);
     const sc = this.sun.shadow.camera;
     sc.near = 1; sc.far = WORLD.SIZE * 2;
@@ -220,11 +222,17 @@ export class Renderer {
           grp.add(mesh); grp.add(scaffold);
           grp.position.set(b.x, b.y, b.z);
           this.structGroup.add(grp);
-          rec = { mesh, scaffold };
+          rec = { grp, mesh, scaffold, type: b.type, baseY: b.y, phase: Math.random() * 6 };
           this.buildingMeshes.set(b, rec);
         }
         rec.mesh.scale.y = b.built ? 1 : (0.2 + 0.8 * Math.min(1, b.progress / b.work));
         rec.scaffold.visible = !b.built;
+        // ships ride the water
+        if (rec.type === 'ship' && b.built) {
+          const t = performance.now() * 0.0012 + rec.phase;
+          rec.grp.position.y = rec.baseY + Math.sin(t) * 0.09;
+          rec.grp.rotation.z = Math.sin(t * 0.7) * 0.03;
+        }
       }
     }
   }
@@ -258,6 +266,8 @@ export class Renderer {
     if (type === 'totem' && this._has('totem')) { g.add(this.assets.clone('totem')); return g; }
     if (type === 'granary' && this._has('granary')) { g.add(this.assets.clone('granary')); return g; }
     if (type === 'watchtower' && this._has('watchtower')) { g.add(this.assets.clone('watchtower')); return g; }
+    if (type === 'well' && this._has('well')) { g.add(this.assets.clone('well')); return g; }
+    if (type === 'ship' && this._has('ship')) { g.add(this.assets.clone('ship')); return g; }
     switch (type) {
       case 'storehouse': { box(4, 2, 3, WOOD, 0); const r = box(4.4, 0.4, 3.4, DARK, 2); break; }
       case 'granary': { box(2, 0.6, 2, WOOD, 0); const b = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 1.8, 10), new THREE.MeshStandardMaterial({ color: STRAW, roughness: 1 })); b.position.y = 1.5; b.castShadow = true; g.add(b); const r = new THREE.Mesh(new THREE.ConeGeometry(1.4, 1, 10), new THREE.MeshStandardMaterial({ color: DARK })); r.position.y = 2.9; g.add(r); break; }
@@ -268,6 +278,39 @@ export class Renderer {
       case 'palisade': { for (let i = -2; i <= 2; i++) { const lg = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 2.2, 6), new THREE.MeshStandardMaterial({ color: DARK, roughness: 1 })); lg.position.set(i * 0.5, 1.1, 0); lg.castShadow = true; g.add(lg); const tp = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.4, 6), new THREE.MeshStandardMaterial({ color: DARK })); tp.position.set(i * 0.5, 2.3, 0); g.add(tp); } break; }
       case 'watchtower': { for (const dx of [-0.8, 0.8]) for (const dz of [-0.8, 0.8]) { const lg = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 3.4, 6), new THREE.MeshStandardMaterial({ color: WOOD })); lg.position.set(dx, 1.7, dz); g.add(lg); } box(2.4, 0.3, 2.4, WOOD, 3.2); const r = new THREE.Mesh(new THREE.ConeGeometry(1.8, 1, 4), new THREE.MeshStandardMaterial({ color: DARK })); r.position.y = 4.2; r.rotation.y = Math.PI / 4; g.add(r); break; }
       case 'totem': { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.5, 3.2, 6), new THREE.MeshStandardMaterial({ color: 0x7a4a2a, roughness: 1 })); p.position.y = 1.6; p.castShadow = true; g.add(p); break; }
+      case 'well': {
+        const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.95, 0.7, 10, 1, true), new THREE.MeshStandardMaterial({ color: STONE, roughness: 1, side: THREE.DoubleSide }));
+        ring.position.y = 0.35; g.add(ring);
+        for (const s of [-1, 1]) { const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 1.6, 5), new THREE.MeshStandardMaterial({ color: DARK })); post.position.set(s * 0.8, 0.8, 0); g.add(post); }
+        const cap = new THREE.Mesh(new THREE.ConeGeometry(1.1, 0.5, 4), new THREE.MeshStandardMaterial({ color: STRAW })); cap.position.y = 1.8; cap.rotation.y = Math.PI / 4; g.add(cap);
+        break;
+      }
+      case 'circle': {
+        for (let i = 0; i < 7; i++) {
+          const st = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.3 + (i % 3) * 0.3, 0.35), new THREE.MeshStandardMaterial({ color: STONE, roughness: 1 }));
+          const a = i / 7 * Math.PI * 2;
+          st.position.set(Math.cos(a) * 1.7, 0.7, Math.sin(a) * 1.7);
+          st.rotation.y = -a; st.castShadow = true; g.add(st);
+        }
+        break;
+      }
+      case 'dock': {
+        const deck = box(1.6, 0.18, 5.5, WOOD, 0.5); deck.position.z = -1.6;
+        for (const dz of [-3.8, -1.8, 0.2]) for (const dx of [-0.6, 0.6]) {
+          const post = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 1.4, 5), new THREE.MeshStandardMaterial({ color: DARK }));
+          post.position.set(dx, 0, dz); g.add(post);
+        }
+        break;
+      }
+      case 'ship': {
+        const hull = new THREE.Mesh(new THREE.CapsuleGeometry(0.55, 2.4, 4, 8), new THREE.MeshStandardMaterial({ color: 0x4a3320, roughness: 0.9 }));
+        hull.rotation.z = Math.PI / 2; hull.scale.y = 0.55; hull.position.y = 0.3; hull.castShadow = true; g.add(hull);
+        const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 2.4, 6), new THREE.MeshStandardMaterial({ color: DARK }));
+        mast.position.y = 1.4; g.add(mast);
+        const sail = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 1.1), new THREE.MeshStandardMaterial({ color: 0xd8c9a0, side: THREE.DoubleSide, roughness: 1 }));
+        sail.position.set(0, 1.6, 0.02); g.add(sail);
+        break;
+      }
       default: box(2.2, 1.6, 2.2, WOOD, 0);
     }
     return g;
@@ -283,7 +326,7 @@ export class Renderer {
       this._ghostType = type;
     }
     this.ghost.visible = true;
-    this.ghost.position.set(x, this.sim.world.heightAt(x, z), z);
+    this.ghost.position.set(x, Math.max(0.05, this.sim.world.heightAt(x, z)), z);
     const col = valid ? 0x6ad06a : 0xd05a5a;
     this.ghost.traverse((o) => { if (o.isMesh && o.material.color) o.material.color.setHex(col); });
   }
@@ -663,8 +706,20 @@ export class Renderer {
         this.scene.remove(g);
         g = this._makeBeingMesh(b); this.beingMeshes.set(b.id, g);
       }
+      // measure actual velocity so the stride matches the ground speed (no foot-sliding)
+      const dtf = this._dt || 0.016;
+      let vel = 0;
+      if (g.userData.lastX !== undefined) {
+        vel = Math.hypot(b.x - g.userData.lastX, b.z - g.userData.lastZ) / dtf;
+      }
+      g.userData.lastX = b.x; g.userData.lastZ = b.z;
       g.position.set(b.x, b.y, b.z);
-      g.rotation.y = -b.heading + Math.PI / 2 || 0;
+      // smooth turning instead of snapping
+      const targetRot = (-b.heading + Math.PI / 2) || 0;
+      let dr = targetRot - g.rotation.y;
+      while (dr > Math.PI) dr -= Math.PI * 2;
+      while (dr < -Math.PI) dr += Math.PI * 2;
+      g.rotation.y += dr * Math.min(1, dtf * 10);
       const dist = this.camera.position.distanceTo(g.position);
       // cull distant beings entirely so wide / continental views stay fast
       const vis = dist < 320;
@@ -675,9 +730,9 @@ export class Renderer {
       if (g.userData.mixer) {
         if (dist < 200) {
           g.userData.mixer.update(this._dt || 0.016);
-          // full walk while moving; a faint sway at rest so they aren't frozen
+          // stride speed follows measured ground speed; faint sway at rest
           g.userData.walk.setEffectiveWeight(b.moving ? 1 : 0.12);
-          g.userData.walk.timeScale = b.moving ? 1.3 : 0.35;
+          g.userData.walk.timeScale = b.moving ? Math.max(0.7, Math.min(2.3, vel / 2.4)) : 0.35;
         }
         g.userData.body.position.y = g.userData.bodyBaseY;
       } else {
