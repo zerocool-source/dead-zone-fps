@@ -30,6 +30,7 @@ export class Sim {
     this.FAUNA_RESPAWN = FAUNA.RESPAWN_DAYS;
     this._jobTimer = 0;
     this.voices = new Voices(this);
+    this.weather = { state: 'clear', t: this.rng.range(2, 6) }; // days until change
 
     this._seedTribes();
     this._seedFauna();
@@ -130,6 +131,7 @@ export class Sim {
       this._fauna(dDays);
       this._gestation();
       this._produce(dDays);
+      this._weather(dDays);
     }
 
     for (const t of this.tribes) this._discoveries(t);
@@ -493,7 +495,7 @@ export class Sim {
 
   // ---- ecology ----
   _food(dDays) {
-    const rate = dDays / FOOD.REGROW_DAYS;
+    const rate = (dDays / FOOD.REGROW_DAYS) * (this.weather.state === 'rain' ? 1.7 : 1);
     for (const bush of this.world.bushes) if (bush.berries < bush.max) { bush.regrow += rate; if (bush.regrow >= 1) { bush.berries += 1; bush.regrow = 0; } }
   }
   _resources(dDays) {
@@ -700,6 +702,21 @@ export class Sim {
         break;
       case 'expand':
         this.chronicle.add(this.day, this.year, '🧭', `${who} sends the ${tribe.name} to range farther across the land.`, 'gov'); break;
+    }
+  }
+
+  // ---- weather: clear ↔ rain fronts roll across the continent ----
+  _weather(dDays) {
+    const w = this.weather;
+    w.t -= dDays;
+    if (w.t > 0) return;
+    if (w.state === 'clear') {
+      w.state = 'rain';
+      w.t = this.rng.range(0.8, 2.2);
+      if (this.rng.chance(0.5)) this.chronicle.add(this.day, this.year, '🌧️', 'Rain sweeps across the land. The fields drink deep.', 'epoch');
+    } else {
+      w.state = 'clear';
+      w.t = this.rng.range(2.5, 7);
     }
   }
 

@@ -278,7 +278,7 @@ export class HUD {
       return `<div data-idx="${i}" title="Click to fly here" style="cursor:pointer;border-radius:4px;padding:2px 3px;margin:1px 0;">
         <div style="display:flex;align-items:center;gap:6px;font-size:11px;">
           <span style="width:9px;height:9px;border-radius:50%;background:${col};flex:none;"></span>
-          <span style="flex:1;color:var(--text);">${t.name}${war}</span>
+          <span style="flex:1;color:var(--text);">${this.playerTribe === t ? '⭐ ' : ''}${t.name}${war}</span>
           <span style="color:var(--text-dim);">${pop}</span></div>
         <div style="font-size:9px;color:var(--text-dim);margin:-1px 0 1px 15px;">${t.race.name} · ${era}${pop === 0 ? ' · ✝' : ''}</div></div>`;
     }).join('');

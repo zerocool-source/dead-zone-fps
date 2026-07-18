@@ -19,36 +19,98 @@
     body { font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; color: var(--text); }
     canvas { display: block; }
 
-    /* ---- Loading / title veil ---- */
+    /* ---- Title screen (animated) ---- */
     #veil {
       position: fixed; inset: 0; z-index: 200;
-      background:
-        radial-gradient(ellipse at 50% 38%, rgba(40,34,20,0.55), transparent 60%),
-        linear-gradient(180deg, #06070b 0%, #0c0e14 60%, #06070b 100%);
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      transition: opacity 0.8s ease;
+      transition: opacity 0.9s ease; overflow: hidden;
+      background: #06070b;
     }
     #veil.hidden { opacity: 0; pointer-events: none; }
+    #menu-bg {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      object-fit: cover; opacity: 0.55;
+      filter: saturate(1.05);
+    }
+    #veil::after {
+      content: ''; position: absolute; inset: 0;
+      background: radial-gradient(ellipse at 50% 42%, transparent 30%, rgba(6,7,11,0.82) 100%);
+      pointer-events: none;
+    }
+    .veil-inner { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; }
     #veil .mark {
-      font-size: clamp(38px, 8vw, 92px); letter-spacing: 0.34em;
+      font-size: clamp(44px, 9vw, 104px); letter-spacing: 0.34em;
       font-weight: 700; color: var(--gold);
-      text-shadow: 0 0 38px rgba(232,200,122,0.35); padding-left: 0.34em;
+      text-shadow: 0 0 44px rgba(232,200,122,0.45), 0 2px 18px rgba(0,0,0,0.8);
+      padding-left: 0.34em;
+      animation: title-glow 5s ease-in-out infinite;
+    }
+    @keyframes title-glow {
+      0%,100% { text-shadow: 0 0 34px rgba(232,200,122,0.35), 0 2px 18px rgba(0,0,0,0.8); }
+      50% { text-shadow: 0 0 64px rgba(232,200,122,0.65), 0 2px 18px rgba(0,0,0,0.8); }
     }
     #veil .sub {
-      margin-top: 0.6em; font-size: clamp(11px, 1.6vw, 16px);
-      letter-spacing: 0.5em; color: var(--gold-dim); padding-left: 0.5em;
+      margin-top: 0.5em; font-size: clamp(11px, 1.6vw, 17px);
+      letter-spacing: 0.52em; color: var(--gold-dim); padding-left: 0.52em;
+      text-shadow: 0 1px 10px rgba(0,0,0,0.9);
     }
-    #veil .status { margin-top: 2.4em; font-size: 13px; letter-spacing: 0.2em; color: var(--text-dim); }
-    #veil .enter {
-      margin-top: 1.6em; font-size: 14px; letter-spacing: 0.3em; color: var(--text);
-      border: 1px solid var(--panel-edge); padding: 14px 34px; border-radius: 3px;
-      cursor: pointer; opacity: 0; transition: opacity 0.4s, background 0.2s, color 0.2s;
-      background: rgba(232,200,122,0.04);
-    }
-    #veil .enter.ready { opacity: 1; }
-    #veil .enter:hover { background: rgba(232,200,122,0.14); color: var(--gold); }
+    #veil .status { margin-top: 2em; font-size: 12px; letter-spacing: 0.2em; color: var(--text-dim); text-shadow: 0 1px 8px #000; }
     @keyframes pulse { 0%,100% { opacity: 0.5; } 50% { opacity: 1; } }
     #veil .status.loading { animation: pulse 1.4s ease-in-out infinite; }
+
+    .menu-btns { margin-top: 1.4em; display: flex; flex-direction: column; gap: 10px; align-items: center; opacity: 0; transition: opacity 0.5s; }
+    .menu-btns.ready { opacity: 1; }
+    .mbtn {
+      font-size: 14px; letter-spacing: 0.3em; color: var(--text); font-family: inherit;
+      border: 1px solid var(--panel-edge); padding: 13px 40px; border-radius: 3px;
+      cursor: pointer; background: rgba(6,7,11,0.55); min-width: 300px; text-align: center;
+      transition: background 0.2s, color 0.2s, border-color 0.2s;
+    }
+    .mbtn:hover { background: rgba(232,200,122,0.16); color: var(--gold); border-color: var(--gold-dim); }
+    .mbtn.primary { background: rgba(232,200,122,0.12); color: var(--gold); }
+
+    /* ---- Race select ---- */
+    #race-select {
+      position: relative; z-index: 2; display: none; flex-direction: column; align-items: center;
+      max-width: 980px; width: 94%;
+    }
+    #race-select h2 { color: var(--gold); letter-spacing: 0.3em; font-size: clamp(16px, 2.4vw, 24px); margin-bottom: 4px; text-shadow: 0 1px 10px #000; }
+    #race-select .rs-sub { color: var(--text-dim); font-size: 12px; letter-spacing: 0.12em; margin-bottom: 18px; text-shadow: 0 1px 8px #000; }
+    .race-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; width: 100%;
+    }
+    @media (max-width: 760px) { .race-grid { grid-template-columns: repeat(2, 1fr); } }
+    .race-card {
+      background: rgba(10,12,18,0.78); border: 1px solid var(--panel-edge); border-radius: 8px;
+      overflow: hidden; cursor: pointer; transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+      backdrop-filter: blur(4px);
+    }
+    .race-card:hover { transform: translateY(-4px); border-color: var(--gold); box-shadow: 0 10px 34px rgba(232,200,122,0.18); }
+    .race-card img, .race-card .ph {
+      width: 100%; aspect-ratio: 1; object-fit: cover; display: block;
+      background: linear-gradient(160deg, #1a2030, #0c0e14);
+    }
+    .race-card .ph { display: grid; place-items: center; font-size: 44px; color: var(--gold-dim); }
+    .race-card .rc-name { color: var(--gold); font-size: 14px; font-weight: 700; letter-spacing: 0.08em; padding: 8px 10px 2px; }
+    .race-card .rc-desc { color: var(--text-dim); font-size: 10.5px; line-height: 1.4; padding: 0 10px 10px; min-height: 40px; }
+    #race-back { margin-top: 16px; }
+
+    /* ---- Pause menu ---- */
+    #pause {
+      position: fixed; inset: 0; z-index: 180; display: none;
+      align-items: center; justify-content: center;
+      background: rgba(6,7,11,0.72); backdrop-filter: blur(6px);
+    }
+    #pause .pm {
+      background: var(--panel); border: 1px solid var(--panel-edge); border-radius: 10px;
+      padding: 26px 34px; min-width: 340px; text-align: center;
+    }
+    #pause h2 { color: var(--gold); letter-spacing: 0.34em; font-size: 20px; margin-bottom: 18px; }
+    #pause .prow { margin: 12px 0; text-align: left; }
+    #pause .plabel { font-size: 10px; letter-spacing: 0.2em; color: var(--gold-dim); margin-bottom: 6px; }
+    #pause input[type="range"] { width: 100%; accent-color: var(--gold); cursor: pointer; }
+    #pause .controls-list { font-size: 11px; color: var(--text-dim); line-height: 1.8; text-align: left; }
+    #pause .controls-list b { color: var(--text); font-weight: 600; }
 
     #ui-root { position: fixed; inset: 0; pointer-events: none; z-index: 50; }
     .panel {
@@ -62,10 +124,42 @@
 </head>
 <body>
   <div id="veil">
-    <div class="mark">AEON</div>
-    <div class="sub">GOD OF PANGAEA</div>
-    <div class="status loading" id="veil-status">SHAPING THE WORLD…</div>
-    <div class="enter" id="veil-enter">ENTER THE WORLD</div>
+    <video id="menu-bg" autoplay muted loop playsinline src="/menu.mp4"></video>
+    <div class="veil-inner" id="menu-main">
+      <div class="mark">AEON</div>
+      <div class="sub">GOD OF PANGAEA</div>
+      <div class="status loading" id="veil-status">SHAPING THE WORLD…</div>
+      <div class="menu-btns" id="menu-btns">
+        <button class="mbtn primary" id="btn-lead">LEAD A PEOPLE</button>
+        <button class="mbtn" id="btn-watch">WATCH AS A GOD</button>
+      </div>
+    </div>
+    <div id="race-select">
+      <h2>CHOOSE YOUR PEOPLE</h2>
+      <div class="rs-sub">You will walk beside them, build with them, and answer their prayers.</div>
+      <div class="race-grid" id="race-grid"></div>
+      <button class="mbtn" id="race-back">BACK</button>
+    </div>
+  </div>
+
+  <div id="pause">
+    <div class="pm pointer">
+      <h2>PAUSED</h2>
+      <div class="prow">
+        <div class="plabel">MUSIC VOLUME</div>
+        <input type="range" id="pause-music" min="0" max="100" value="70" />
+      </div>
+      <div class="prow">
+        <div class="plabel">CONTROLS</div>
+        <div class="controls-list">
+          <b>WASD / drag</b> — move the camera &nbsp;·&nbsp; <b>wheel</b> — zoom<br/>
+          <b>1–5</b> — time speed &nbsp;·&nbsp; <b>Space</b> — pause time<br/>
+          <b>Click a person</b> — read their mind &nbsp;·&nbsp; <b>👁</b> — possess<br/>
+          <b>BUILD bar</b> — place buildings &nbsp;·&nbsp; <b>Esc</b> — this menu
+        </div>
+      </div>
+      <button class="mbtn primary" id="pause-resume" style="margin-top:12px;">RESUME</button>
+    </div>
   </div>
 
   <div id="ui-root"></div>

@@ -87,6 +87,7 @@ export class Renderer {
     this.farms = null;
     this._elev = 1;
 
+    this._buildRain();
     this.raycaster = new THREE.Raycaster();
     this.effects = [];
 
@@ -97,6 +98,39 @@ export class Renderer {
 
     window.addEventListener('resize', () => this._resize());
     return this;
+  }
+
+  // ---- rain: a particle field that follows the camera while a front passes ----
+  _buildRain() {
+    const N = 900, R = 90;
+    const pos = new Float32Array(N * 3);
+    for (let i = 0; i < N; i++) {
+      pos[i * 3] = (Math.random() - 0.5) * R * 2;
+      pos[i * 3 + 1] = Math.random() * 60;
+      pos[i * 3 + 2] = (Math.random() - 0.5) * R * 2;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const mat = new THREE.PointsMaterial({ color: 0x9fb8d8, size: 0.35, transparent: true, opacity: 0.55, depthWrite: false });
+    this.rain = new THREE.Points(geo, mat);
+    this.rain.visible = false;
+    this.rain.frustumCulled = false;
+    this.scene.add(this.rain);
+    this._rainR = R;
+  }
+  _updateRain(dt) {
+    const raining = this.sim.weather && this.sim.weather.state === 'rain';
+    this.rain.visible = raining;
+    if (!raining) return;
+    const t = this.controls.target;
+    this.rain.position.set(t.x, 0, t.z);
+    const p = this.rain.geometry.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      let y = p.getY(i) - dt * 55;
+      if (y < 0) y = 60;
+      p.setY(i, y);
+    }
+    p.needsUpdate = true;
   }
 
   // ---- thought bubbles: a glanceable icon of each being's current mind-state ----
@@ -836,6 +870,12 @@ export class Renderer {
     this._elev = elev;
     const night = new THREE.Color(0x0a0d14), dusk = new THREE.Color(0x1a2336), day = new THREE.Color(0x9fc0e8);
     const skyc = elev < 0.25 ? night.clone().lerp(dusk, elev / 0.25) : dusk.clone().lerp(day, (elev - 0.25) / 0.75);
+    // rain fronts grey the sky and mute the light
+    if (this.sim.weather && this.sim.weather.state === 'rain') {
+      skyc.lerp(new THREE.Color(0x5a6470), 0.55);
+      this.sun.intensity *= 0.45;
+      this.hemi.intensity *= 0.75;
+    }
     this.scene.background.copy(skyc);
     this.scene.fog.color.copy(skyc);
   }
@@ -882,6 +922,7 @@ export class Renderer {
     }
     this._updateSpeech(dt);
     this._updateEffects(dt);
+    this._updateRain(dt);
     this._updateSky();
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
