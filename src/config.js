@@ -1,7 +1,7 @@
 // AEON — global tuning constants. One place to balance the whole sim.
 
 export const WORLD = {
-  SIZE: 1280,         // world units across (a truly huge continent)
+  SIZE: 1536,         // world units across (a truly huge continent)
   SEG: 320,           // terrain grid resolution
   SEA_LEVEL: 0.0,     // height at/below this is ocean
   MAX_HEIGHT: 36,     // peak mountain height in world units
@@ -19,9 +19,13 @@ export const RACES = {
   sunkin:    { name: 'Sunkin',    mesh: 'sun',   hue: 0.11, build: 0.97, biome: 'savanna', trait: { social: 0.3, curious: 0.25 } },
   tidefolk:  { name: 'Tidefolk',  mesh: 'tide',  hue: 0.55, build: 1.0,  biome: 'beach',   trait: { curious: 0.3, kind: 0.2 } },
   mirekin:   { name: 'Mirekin',   mesh: 'mire',  hue: 0.40, build: 0.95, biome: 'tundra',  trait: { devout: 0.3, social: -0.15 } },
+  duskborn:  { name: 'Duskborn',  mesh: 'dusk',  hue: 0.75, build: 1.02, biome: 'forest',  trait: { curious: 0.3, social: -0.1 } },
+  stormkin:  { name: 'Stormkin',  mesh: 'storm', hue: 0.58, build: 1.08, biome: 'rock',    trait: { brave: 0.45 } },
+  oreborn:   { name: 'Oreborn',   mesh: 'ore',   hue: 0.08, build: 1.12, biome: 'rock',    trait: { devout: 0.2, brave: 0.2 } },
+  giltfolk:  { name: 'Giltfolk',  mesh: 'gilt',  hue: 0.13, build: 1.0,  biome: 'savanna', trait: { curious: 0.4, social: 0.2 }, elite: true },
 };
 
-export const TRIBES = { COUNT: 10, START_POP: 9 };
+export const TRIBES = { COUNT: 12, START_POP: 9 };
 
 // One in-game DAY = this many real seconds at 1x speed (slowed for day-to-day life).
 export const DAY_SECONDS = 55;
@@ -117,10 +121,14 @@ export const TECH = [
   { id: 'wheel',    name: 'The Wheel',   needPop: 18, needInsight: 6800, era: 'Bronze',     desc: 'Carts, trade roads, faster everything.' },
   { id: 'iron',     name: 'Iron Working', needPop: 22, needInsight: 9000, era: 'Iron',      desc: 'Hard tools, hard weapons. The Iron Age begins.' },
   { id: 'masonry',  name: 'Masonry',     needPop: 24, needInsight: 12000, era: 'Iron',      desc: 'Walls, temples, the first true cities.' },
+  { id: 'currency', name: 'Currency',    needPop: 26, needInsight: 16000, era: 'Classical', desc: 'Coin and credit. Markets hum with trade.' },
+  { id: 'mathematics', name: 'Mathematics', needPop: 28, needInsight: 21000, era: 'Classical', desc: 'Number, measure, and the geometry of great works.' },
+  { id: 'engineering', name: 'Engineering', needPop: 30, needInsight: 27000, era: 'Machina', desc: 'Gears, cranes, aqueducts. The age of machines stirs.' },
+  { id: 'steamworks', name: 'Steamworks', needPop: 34, needInsight: 36000, era: 'Machina',  desc: 'Pressure and pistons. Chimneys rise over the workshops.' },
 ];
 
 // the age a tribe is in, by the most advanced tech it holds
-export const ERAS = ['Stone', 'Bronze', 'Iron', 'Classical'];
+export const ERAS = ['Stone', 'Bronze', 'Iron', 'Classical', 'Machina'];
 export function eraOf(techIds) {
   let era = 'Stone';
   for (const t of TECH) if (techIds.includes(t.id)) era = t.era;
@@ -158,8 +166,18 @@ export const BUILDINGS = {
     desc: 'A pier for fishers. Must touch the water.', effect: '+6 food / day · enables ships' },
   ship:       { name: 'Fishing Ship', icon: '⛵', cost: { wood: 22 },            work: 10, mesh: 'ship', produces: { food: 9 }, water: 'water', needs: 'dock', tech: 'sailing',
     desc: 'A sailed canoe. Build on water near your dock.', effect: '+9 food / day from the deep' },
+  house:      { name: 'Longhouse',    icon: '🏠', cost: { wood: 26, stone: 10 }, work: 14, mesh: 'house', shelter: 10, tech: 'pottery',
+    desc: 'A great home for many families.', effect: 'Shelter for ~10 souls' },
+  market:     { name: 'Market',       icon: '🛒', cost: { wood: 24, stone: 10 }, work: 12, mesh: 'market', produces: { food: 3, wood: 2, stone: 2 }, tech: 'pottery',
+    desc: 'Traders barter surplus into plenty.', effect: '+3 food +2 wood +2 stone / day' },
+  forge:      { name: 'Forge',        icon: '🔥', cost: { wood: 14, stone: 18 }, work: 12, mesh: 'forge', power: 1.3, tech: 'bronze',
+    desc: 'Bronze and iron beaten into blades and tools.', effect: 'Warriors +30% strength' },
+  wall:       { name: 'Stone Wall',   icon: '🏯', cost: { stone: 22 },           work: 10, mesh: 'wall', defense: 4, tech: 'masonry',
+    desc: 'True masonry. Cities grow behind walls.', effect: '+4 defense' },
+  workshop:   { name: 'Machina Workshop', icon: '⚙️', cost: { wood: 20, stone: 26 }, work: 16, mesh: 'workshop', insight: 10, produces: { wood: 3, stone: 3 }, tech: 'engineering',
+    desc: 'Gears and steam — the future being invented.', effect: '+10 insight · +3 wood +3 stone / day' },
 };
-export const BUILD_ORDER = ['hut', 'well', 'storehouse', 'granary', 'farm', 'lodge', 'mine', 'circle', 'dock', 'ship', 'totem', 'monument', 'palisade', 'watchtower'];
+export const BUILD_ORDER = ['hut', 'house', 'well', 'storehouse', 'granary', 'farm', 'lodge', 'mine', 'market', 'forge', 'circle', 'dock', 'ship', 'totem', 'monument', 'palisade', 'wall', 'watchtower', 'workshop'];
 
 export const GOD = {
   FAITH_START: 20,

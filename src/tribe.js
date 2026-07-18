@@ -1,6 +1,6 @@
 // A Tribe — a people of one race with their own home, stockpile, knowledge, leader,
 // culture, and diplomacy. Beings belong to a tribe; the Sim owns the list of tribes.
-import { RES } from './config.js';
+import { RES, BUILDINGS } from './config.js';
 import { makeTribeName } from './names.js';
 
 let NEXT = 1;
@@ -20,6 +20,7 @@ export class Tribe {
     this.huts = [];                         // {x,z,y,occupants}
     this.buildings = [];                     // player-placed {type,x,z,y,built,progress,work}
     this.defense = 0;                        // sum of built defensive structures
+    this.power = 1;                          // cached warrior damage multiplier (forge etc.)
     this.farms = [];
     this.insight = 0;
     this.tech = [];
@@ -32,6 +33,17 @@ export class Tribe {
 
   get members() { return this._members || []; }
   set members(v) { this._members = v; }
+
+  // recompute the cached warrior multiplier — call when a power building completes
+  // (or is lost, should destruction ever exist); combat itself just reads this.power
+  recalcPower() {
+    let p = 1;
+    for (const b of this.buildings) {
+      const def = BUILDINGS[b.type];
+      if (b.built && def && def.power) p = Math.max(p, def.power);
+    }
+    this.power = p;
+  }
 
   standing(otherId) { return this.relations.get(otherId) ?? 0; }
   adjustStanding(otherId, d) {

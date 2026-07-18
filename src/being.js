@@ -360,7 +360,9 @@ export class Being {
         this.tx = foe.x; this.tz = foe.z; // chase
         if (Math.hypot(foe.x - this.x, foe.z - this.z) < COMBAT.RANGE) {
           this.action = ACTION.FIGHT;
-          const dmg = COMBAT.DAMAGE * (0.6 + this.skills.craft + Math.max(0, this.build - 1)) * dDays * 6;
+          // warriors of a tribe with a finished forge strike harder (tribe.power is cached)
+          const forged = this.job === 'warrior' && this.tribe ? (this.tribe.power || 1) : 1;
+          const dmg = COMBAT.DAMAGE * (0.6 + this.skills.craft + Math.max(0, this.build - 1)) * forged * dDays * 6;
           foe.health -= dmg;
           if (this.rng.chance(0.03)) sim.voice(this, 'war', { enemy: foe.tribe ? foe.tribe.name : '' });
           this.skills.craft = Math.min(1, this.skills.craft + 0.004);

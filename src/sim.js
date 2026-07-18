@@ -60,15 +60,24 @@ export class Sim {
       while (guard++ < 20 && this.tribes.some(t => t.name.slice(0, 4) === tribe.name.slice(0, 4))) {
         tribe.name = makeTribeName(this.rng);
       }
+      if (race.elite) {
+        // an elder people — they land mid-history and race for the Bronze era
+        tribe.insight += 4000;
+        for (const k in tribe.res) tribe.res[k] *= 2;
+      }
       this.tribes.push(tribe);
       this._seedMembers(tribe);
       this.chronicle.add(0, 0, '🏕️', `The ${tribe.name} (${race.name}) settle the ${race.biome}.`, 'epoch');
+      if (race.elite) {
+        this.chronicle.add(0, 0, '🏺', `The ${race.name} arrive already carrying old knowledge.`, 'epoch');
+      }
     }
     this.home = this.tribes[0].home; // camera default
   }
 
   _seedMembers(tribe) {
-    for (let i = 0; i < TRIBES.START_POP; i++) {
+    const count = TRIBES.START_POP + (tribe.race.elite ? 3 : 0);
+    for (let i = 0; i < count; i++) {
       const a = this.rng.range(0, Math.PI * 2), r = this.rng.range(2, 12);
       let x = tribe.home.x + Math.cos(a) * r, z = tribe.home.z + Math.sin(a) * r;
       if (!this.world.isLand(x, z)) { x = tribe.home.x; z = tribe.home.z; }
@@ -80,6 +89,7 @@ export class Sim {
         hue: tribe.hue + this.rng.gauss(0, 0.012),
         build: tribe.race.build + this.rng.gauss(0, 0.05),
         traits,
+        name: makeName(this.rng, tribe.raceKey),
       });
       b.tribe = tribe;
       this.beings.push(b);
@@ -324,6 +334,7 @@ export class Sim {
       if (site.type === 'farm') builder.tribe.farms.push({ x: site.x, z: site.z, y: site.y, yield: 6, max: 6, regrow: 0 });
       if (site.type === 'hut') builder.tribe.huts.push({ x: site.x, z: site.z, y: site.y, occupants: [] });
       if (def.defense) builder.tribe.defense += def.defense;
+      if (def.power) builder.tribe.recalcPower(); // e.g. a forge arms the warriors
       this.chronicle.add(this.day, this.year, '✅', `The ${builder.tribe.name} finish a ${def.name}.`, 'gov');
     }
   }
@@ -392,13 +403,20 @@ export class Sim {
   }
 
   assignHomes(tribe) {
-    if (!tribe.huts.length) return;
-    for (const h of tribe.huts) h.occupants = [];
+    // housing = the tribe's huts plus any completed shelter building (e.g. a longhouse);
+    // capacity comes from the building def's `shelter`, huts default to 5 souls
+    const homes = tribe.huts.slice();
+    for (const s of tribe.buildings) {
+      if (s.built && BUILDINGS[s.type].shelter) homes.push(s);
+    }
+    if (!homes.length) return;
+    const capOf = (h) => (h.type ? BUILDINGS[h.type].shelter || 5 : 5);
+    for (const h of homes) h.occupants = [];
     for (const b of this.membersOf(tribe)) {
-      if (b.homeHut && tribe.huts.includes(b.homeHut) && b.homeHut.occupants.length < 5) { b.homeHut.occupants.push(b.id); continue; }
+      if (b.homeHut && homes.includes(b.homeHut) && b.homeHut.occupants.length < capOf(b.homeHut)) { b.homeHut.occupants.push(b.id); continue; }
       let best = null, bd = Infinity;
-      for (const h of tribe.huts) {
-        if (h.occupants.length >= 5) continue;
+      for (const h of homes) {
+        if (h.occupants.length >= capOf(h)) continue;
         const d = Math.hypot(h.x - b.x, h.z - b.z) + h.occupants.length * 4;
         if (d < bd) { bd = d; best = h; }
       }
@@ -458,7 +476,7 @@ export class Sim {
         const childBuild = (b.build + fb) / 2 + this.rng.gauss(0, 0.04);
         const child = new Being(this.rng, b.x + this.rng.range(-1, 1), b.z + this.rng.range(-1, 1), {
           age: 0, bornDay: this.day, traits, hue, build: childBuild,
-          parents: father ? [b.id, father.id] : [b.id], name: makeName(this.rng),
+          parents: father ? [b.id, father.id] : [b.id], name: makeName(this.rng, b.tribe && b.tribe.raceKey),
         });
         child.tribe = b.tribe;
         child.hunger = 30; child.energy = 90;
