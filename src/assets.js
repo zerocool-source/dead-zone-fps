@@ -18,8 +18,17 @@ const MANIFEST = {
   sun:      { file: 'sun.glb',      height: 2.0 },  // Sunkin
   tide:     { file: 'tide.glb',     height: 1.9 },  // Tidefolk
   mire:     { file: 'mire.glb',     height: 1.85 }, // Mirekin
+  dusk:     { file: 'dusk.glb',     height: 1.9 },  // Duskborn
+  storm:    { file: 'storm.glb',    height: 1.95 }, // Stormkin
+  ore:      { file: 'ore.glb',      height: 1.85 }, // Oreborn
+  gilt:     { file: 'gilt.glb',     height: 1.9 },  // Giltfolk
   well:     { file: 'well.glb',     height: 2.2 },
   ship:     { file: 'ship.glb',     height: 3.0 },
+  market:   { file: 'market.glb',   height: 2.6 },
+  forge:    { file: 'forge.glb',    height: 3.4 },
+  wall:     { file: 'wall.glb',     height: 2.4 },
+  workshop: { file: 'workshop.glb', height: 4.0 },
+  house:    { file: 'house.glb',    height: 3.2 },
   granary:  { file: 'granary.glb',  height: 3.0 },
   watchtower: { file: 'watchtower.glb', height: 5.0 },
   deer:     { file: 'deer.glb',     height: 1.7 },

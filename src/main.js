@@ -66,14 +66,18 @@ async function boot() {
     sunkin: 'Golden savanna runners. Social, clever, everywhere at once.',
     tidefolk: 'Coast dwellers who read the sea. Kind and curious.',
     mirekin: 'Cold-marsh believers. Insular, devout, patient.',
+    duskborn: 'Twilight forest wanderers. Quiet, clever, star-guided.',
+    stormkin: 'Cliff dwellers of the thunder coast. Utterly fearless.',
+    oreborn: 'Deep-mountain smiths. Stone-patient, forge-proud.',
+    giltfolk: 'A gilded elder civilization — already ages ahead.',
   };
   const grid = document.getElementById('race-grid');
-  const HAS_PORTRAIT = ['dawnfolk', 'emberfolk', 'frostborn', 'thornkin', 'ashkin', 'sunkin'];
+  // every race tries its portrait; a missing jpg silently degrades to the letter tile
   grid.innerHTML = Object.entries(RACES).map(([key, r]) => `
     <div class="race-card" data-race="${key}">
-      ${HAS_PORTRAIT.includes(key)
-        ? `<img src="/races/${key}.jpg" alt="${r.name}" loading="lazy" />`
-        : `<div class="ph">${r.name[0]}</div>`}
+      <img src="/races/${key}.jpg" alt="${r.name}" loading="lazy"
+        onerror="this.style.display='none';this.nextElementSibling.style.display='grid'" />
+      <div class="ph" style="display:none">${r.name[0]}</div>
       <div class="rc-name">${r.name}</div>
       <div class="rc-desc">${RACE_DESC[key] || ''}</div>
     </div>`).join('');
