@@ -11,6 +11,22 @@ const TOOLS = [
   { id: 'possess', icon: '👁', name: 'Possess', cost: 0, hint: 'Click a being — walk beside their life.' },
 ];
 
+// City-builder build-menu categories. The items themselves come from config's
+// BUILD_ORDER/BUILDINGS at build time — a key that appears in no list below
+// lands in INDUSTRY, so newly added buildings never vanish from the menu.
+const BUILD_CATS = [
+  { id: 'homes',    label: 'HOMES',    keys: ['hut', 'house'] },
+  { id: 'food',     label: 'FOOD',     keys: ['well', 'granary', 'farm', 'dock', 'ship'] },
+  { id: 'industry', label: 'INDUSTRY', keys: ['storehouse', 'lodge', 'mine', 'market', 'forge', 'workshop'] },
+  { id: 'faith',    label: 'FAITH',    keys: ['totem', 'monument', 'circle'] },
+  { id: 'defense',  label: 'DEFENSE',  keys: ['palisade', 'wall', 'watchtower'] },
+];
+const catOf = (type) =>
+  (BUILD_CATS.find((c) => c.keys.includes(type)) || BUILD_CATS.find((c) => c.id === 'industry')).id;
+
+// tint for the little era badge in the PEOPLES panel
+const ERA_COL = { Stone: '#9aa0ac', Bronze: '#c88a4a', Iron: '#b8bec8', Classical: '#e8c87a', Machina: '#7ec8c0' };
+
 export class HUD {
   constructor(sim, god) {
     this.sim = sim; this.god = god;
@@ -28,11 +44,25 @@ export class HUD {
     const root = document.getElementById('ui-root');
     root.innerHTML = '';
 
+    // shared hover/active styles — buttons keep their inline "active" styling,
+    // so hover rules use !important and skip anything currently marked .on
+    if (!document.getElementById('hud-style')) {
+      const st = document.createElement('style');
+      st.id = 'hud-style';
+      st.textContent = `
+        #ui-root .hbtn { transition: background .15s, border-color .15s, color .15s; }
+        #ui-root .hbtn:not(.on):hover { border-color: var(--gold-dim) !important; background: rgba(232,200,122,0.10) !important; }
+        #ui-root .hbtn.on:hover { filter: brightness(1.12); }
+        #tribes-list [data-idx]:hover { background: rgba(232,200,122,0.08); }
+        #ui-root .rel-link:hover { color: var(--gold) !important; }`;
+      document.head.appendChild(st);
+    }
+
     // ---- top bar ----
     const top = this._el('div', 'panel pointer');
-    top.style.cssText += 'position:absolute;top:14px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:14px;padding:8px 16px;';
+    top.style.cssText += 'position:absolute;top:14px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:16px;padding:9px 18px;';
     const speedBtns = TIME_SCALES.map((s, i) =>
-      `<button data-sp="${i}" class="sp" style="background:none;border:1px solid var(--panel-edge);color:var(--text);
+      `<button data-sp="${i}" class="sp hbtn" style="background:none;border:1px solid var(--panel-edge);color:var(--text);
         border-radius:4px;padding:5px 9px;cursor:pointer;font-size:12px;font-family:inherit;">${TIME_LABELS[i].split(' ')[0]}</button>`
     ).join('');
     top.innerHTML = `
@@ -48,7 +78,7 @@ export class HUD {
       <div style="width:1px;height:30px;background:var(--panel-edge);"></div>
       <div style="display:flex;flex-direction:column;align-items:center;min-width:70px;">
         <div style="color:var(--text);font-size:16px;font-weight:600;" id="hud-pop">0</div>
-        <div style="color:var(--text-dim);font-size:10px;">souls</div>
+        <div style="color:var(--text-dim);font-size:10px;letter-spacing:1px;">souls</div>
       </div>
       <div style="width:1px;height:30px;background:var(--panel-edge);"></div>
       <div style="display:flex;gap:12px;font-size:13px;">
@@ -85,13 +115,13 @@ export class HUD {
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;border-top:1px solid var(--panel-edge);padding-top:7px;">
         <span style="font-size:10px;letter-spacing:1px;color:var(--gold-dim);">SOULS</span>
-        <button id="llm-btn" class="pointer" style="background:none;border:1px solid var(--panel-edge);color:var(--text-dim);border-radius:4px;padding:2px 8px;cursor:pointer;font-family:inherit;font-size:10px;pointer-events:auto;">offline · connect</button>
+        <button id="llm-btn" class="pointer hbtn" style="background:none;border:1px solid var(--panel-edge);color:var(--text-dim);border-radius:4px;padding:2px 8px;cursor:pointer;font-family:inherit;font-size:10px;pointer-events:auto;">offline · connect</button>
       </div>
       <div id="llm-panel" style="display:none;margin-top:6px;">
         <input id="llm-key" type="password" placeholder="Anthropic API key (sk-ant-…)" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.06);border:1px solid var(--panel-edge);border-radius:4px;color:var(--text);font-size:10px;padding:5px 7px;pointer-events:auto;" />
         <div style="display:flex;gap:5px;margin-top:5px;">
-          <button id="llm-save" style="flex:1;background:rgba(232,200,122,0.15);border:1px solid var(--gold-dim);color:var(--gold);border-radius:4px;padding:3px;cursor:pointer;font-family:inherit;font-size:10px;pointer-events:auto;">Connect</button>
-          <button id="llm-off" style="background:none;border:1px solid var(--panel-edge);color:var(--text-dim);border-radius:4px;padding:3px 8px;cursor:pointer;font-family:inherit;font-size:10px;pointer-events:auto;">Off</button>
+          <button id="llm-save" class="hbtn" style="flex:1;background:rgba(232,200,122,0.15);border:1px solid var(--gold-dim);color:var(--gold);border-radius:4px;padding:3px;cursor:pointer;font-family:inherit;font-size:10px;pointer-events:auto;">Connect</button>
+          <button id="llm-off" class="hbtn" style="background:none;border:1px solid var(--panel-edge);color:var(--text-dim);border-radius:4px;padding:3px 8px;cursor:pointer;font-family:inherit;font-size:10px;pointer-events:auto;">Off</button>
         </div>
         <div id="llm-note" style="font-size:9px;color:var(--text-dim);margin-top:4px;line-height:1.3;">Key stays in your browser (localStorage). Leaders &amp; the possessed then speak real Claude lines.</div>
       </div>`;
@@ -128,7 +158,7 @@ export class HUD {
     const pal = this._el('div', 'panel pointer');
     pal.style.cssText += 'position:absolute;left:14px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:6px;padding:8px;';
     TOOLS.forEach(t => {
-      const b = this._el('button', 'tool');
+      const b = this._el('button', 'tool hbtn');
       b.dataset.tool = t.id;
       b.style.cssText = 'display:flex;align-items:center;gap:8px;background:none;border:1px solid transparent;color:var(--text);border-radius:5px;padding:7px 10px;cursor:pointer;font-family:inherit;width:128px;text-align:left;transition:.15s;';
       b.innerHTML = `<span style="font-size:18px;">${t.icon}</span>
@@ -143,9 +173,9 @@ export class HUD {
     root.appendChild(pal);
     this.toolBtns = pal.querySelectorAll('.tool');
 
-    // ---- hint line (bottom-center) ----
+    // ---- hint line (bottom-center, floats above the build menu) ----
     this.elHint = this._el('div', 'panel');
-    this.elHint.style.cssText += 'position:absolute;bottom:14px;left:50%;transform:translateX(-50%);padding:7px 16px;font-size:12px;color:var(--text-dim);letter-spacing:1px;';
+    this.elHint.style.cssText += 'position:absolute;bottom:96px;left:50%;transform:translateX(-50%);padding:6px 16px;font-size:12px;color:var(--text-dim);letter-spacing:1px;white-space:nowrap;';
     this.elHint.textContent = 'Observe your world. Select a being to read their mind.';
     root.appendChild(this.elHint);
 
@@ -153,10 +183,10 @@ export class HUD {
     const mm = this._el('div', 'panel pointer');
     mm.style.cssText += 'position:absolute;right:14px;top:14px;padding:8px;';
     mm.innerHTML = `<div style="color:var(--gold-dim);font-size:10px;letter-spacing:2px;margin-bottom:5px;">THE CONTINENT</div>`;
-    this.miniSize = 200;
+    this.miniSize = 224;
     this.miniCanvas = document.createElement('canvas');
     this.miniCanvas.width = this.miniSize; this.miniCanvas.height = this.miniSize;
-    this.miniCanvas.style.cssText = 'display:block;border-radius:3px;cursor:crosshair;';
+    this.miniCanvas.style.cssText = 'display:block;border-radius:3px;cursor:crosshair;border:1px solid rgba(232,200,122,0.35);box-sizing:content-box;';
     mm.appendChild(this.miniCanvas);
     root.appendChild(mm);
     this.miniCtx = this.miniCanvas.getContext('2d');
@@ -169,7 +199,7 @@ export class HUD {
 
     // ---- inspector (right, below the minimap) ----
     this.inspector = this._el('div', 'panel pointer');
-    this.inspector.style.cssText += 'position:absolute;right:14px;top:248px;width:280px;max-height:calc(100vh - 440px);overflow-y:auto;padding:0;display:none;';
+    this.inspector.style.cssText += 'position:absolute;right:14px;top:278px;width:280px;max-height:calc(100vh - 470px);overflow-y:auto;padding:0;display:none;';
     root.appendChild(this.inspector);
 
     // ---- chronicle (bottom-right) ----
@@ -180,14 +210,14 @@ export class HUD {
     this.elChron = this.chron.querySelector('#chron-list');
     this.sim.chronicle.onAdd(() => this._renderChron());
 
-    // possession banner
+    // possession banner (above the hint line)
     this.posBanner = this._el('div', 'panel pointer');
-    this.posBanner.style.cssText += 'position:absolute;bottom:54px;left:50%;transform:translateX(-50%);padding:8px 16px;display:none;align-items:center;gap:12px;';
+    this.posBanner.style.cssText += 'position:absolute;bottom:134px;left:50%;transform:translateX(-50%);padding:8px 16px;display:none;align-items:center;gap:12px;';
     root.appendChild(this.posBanner);
 
     // tribes overview (left, below the power palette)
     this.tribesPanel = this._el('div', 'panel pointer');
-    this.tribesPanel.style.cssText += 'position:absolute;left:14px;bottom:14px;width:170px;padding:8px 10px;';
+    this.tribesPanel.style.cssText += 'position:absolute;left:14px;bottom:14px;width:196px;padding:8px 10px;';
     this.tribesPanel.innerHTML = `<div style="color:var(--gold-dim);font-size:10px;letter-spacing:2px;margin-bottom:5px;">PEOPLES</div><div id="tribes-list"></div>`;
     root.appendChild(this.tribesPanel);
     this.elTribes = this.tribesPanel.querySelector('#tribes-list');
@@ -198,40 +228,78 @@ export class HUD {
       if (t) this.onFocusTribe(t);
     });
 
-    // ---- build bar (bottom-center) ----
+    // ---- build menu (bottom-center) — city-builder category tabs over an item row ----
     this.onBuild = () => {};
     this.onFocusTribe = () => {};
     this.buildType = null;
+    let savedTab = null;
+    try { savedTab = localStorage.getItem('aeon-build-tab'); } catch { /* private mode */ }
     const bar = this._el('div', 'panel pointer');
-    bar.style.cssText += 'position:absolute;bottom:14px;left:50%;transform:translateX(-50%);display:flex;gap:4px;padding:7px 9px;align-items:center;';
-    bar.innerHTML = `<span style="color:var(--gold-dim);font-size:10px;letter-spacing:2px;margin-right:4px;">BUILD</span>`;
+    bar.style.cssText += 'position:absolute;bottom:14px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:5px;padding:7px 10px;';
+    // tab row — only categories that actually hold something from BUILD_ORDER
+    const cats = BUILD_CATS.filter((c) => BUILD_ORDER.some((t) => catOf(t) === c.id));
+    this.buildTab = cats.some((c) => c.id === savedTab) ? savedTab : cats[0].id;
+    const tabRow = this._el('div');
+    tabRow.style.cssText = 'display:flex;gap:4px;align-items:center;';
+    tabRow.innerHTML = `<span style="color:var(--gold-dim);font-size:10px;letter-spacing:2px;margin-right:5px;">BUILD</span>`;
+    cats.forEach((c) => {
+      const tb = this._el('button', 'bcat hbtn');
+      tb.dataset.cat = c.id;
+      tb.textContent = c.label;
+      tb.style.cssText = 'background:none;border:1px solid transparent;color:var(--text-dim);border-radius:4px;padding:3px 8px;cursor:pointer;font-family:inherit;font-size:9px;letter-spacing:1.5px;';
+      tb.addEventListener('click', () => this._setBuildTab(c.id));
+      tabRow.appendChild(tb);
+    });
+    bar.appendChild(tabRow);
+    // item row — every building is created once; tabs just show/hide them
+    const itemRow = this._el('div');
+    itemRow.style.cssText = 'display:flex;gap:4px;align-items:center;justify-content:center;min-height:36px;';
     BUILD_ORDER.forEach((type) => {
       const d = BUILDINGS[type];
-      const b = this._el('button');
+      const b = this._el('button', 'hbtn');
       b.dataset.build = type;
+      b.dataset.cat = catOf(type);
       b.style.cssText = 'background:none;border:1px solid transparent;border-radius:5px;padding:5px 7px;cursor:pointer;font-size:19px;transition:.12s;';
       b.textContent = d.icon;
       b.addEventListener('mouseenter', () => this._showBuildDetail(type));
       b.addEventListener('mouseleave', () => { if (!this.buildType) this._hideBuildDetail(); });
       b.addEventListener('click', () => this.setBuild(this.buildType === type ? null : type));
-      bar.appendChild(b);
+      itemRow.appendChild(b);
     });
+    bar.appendChild(itemRow);
     root.appendChild(bar);
-    this.buildBtns = bar.querySelectorAll('[data-build]');
+    this.buildTabBtns = tabRow.querySelectorAll('.bcat');
+    this.buildBtns = itemRow.querySelectorAll('[data-build]');
+    this._setBuildTab(this.buildTab);
 
-    // ---- build detail screen (above the bar) ----
+    // ---- build detail screen (above the hint line) ----
     this.buildDetail = this._el('div', 'panel');
-    this.buildDetail.style.cssText += 'position:absolute;bottom:64px;left:50%;transform:translateX(-50%);width:300px;padding:11px 14px;display:none;';
+    this.buildDetail.style.cssText += 'position:absolute;bottom:134px;left:50%;transform:translateX(-50%);width:300px;padding:11px 14px;display:none;';
     root.appendChild(this.buildDetail);
 
     this.setTool('inspect');
     this._renderChron();
   }
 
+  _setBuildTab(id) {
+    this.buildTab = id;
+    try { localStorage.setItem('aeon-build-tab', id); } catch { /* private mode */ }
+    this.buildTabBtns.forEach((b) => {
+      const on = b.dataset.cat === id;
+      b.classList.toggle('on', on);
+      b.style.borderColor = on ? 'var(--gold-dim)' : 'transparent';
+      b.style.background = on ? 'rgba(232,200,122,0.12)' : 'none';
+      b.style.color = on ? 'var(--gold)' : 'var(--text-dim)';
+    });
+    this.buildBtns.forEach((b) => { b.style.display = b.dataset.cat === id ? '' : 'none'; });
+  }
+
   setBuild(type) {
     this.buildType = type;
+    if (type && catOf(type) !== this.buildTab) this._setBuildTab(catOf(type));
     this.buildBtns.forEach((b) => {
       const on = b.dataset.build === type;
+      b.classList.toggle('on', on);
       b.style.borderColor = on ? 'var(--gold)' : 'transparent';
       b.style.background = on ? 'rgba(232,200,122,0.15)' : 'none';
     });
@@ -273,14 +341,16 @@ export class HUD {
     this.elTribes.innerHTML = s.tribes.map((t, i) => {
       const pop = s.membersOf(t).length;
       const col = `hsl(${Math.round(t.color * 360)},55%,62%)`;
-      const era = eraOf(t.tech) + ' Age';
+      const era = eraOf(t.tech);                       // tribe rows already carry tech
+      const ec = ERA_COL[era] || '#9aa0ac';    // hex only — it gets alpha suffixes below
       const war = t._wars && t._wars.size ? ' ⚔' : '';
       return `<div data-idx="${i}" title="Click to fly here" style="cursor:pointer;border-radius:4px;padding:2px 3px;margin:1px 0;">
         <div style="display:flex;align-items:center;gap:6px;font-size:11px;">
           <span style="width:9px;height:9px;border-radius:50%;background:${col};flex:none;"></span>
-          <span style="flex:1;color:var(--text);">${this.playerTribe === t ? '⭐ ' : ''}${t.name}${war}</span>
+          <span style="flex:1;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${this.playerTribe === t ? '⭐ ' : ''}${t.name}${war}</span>
+          <span style="flex:none;font-size:8px;letter-spacing:0.5px;color:${ec};border:1px solid ${ec}55;background:${ec}1a;border-radius:3px;padding:0 4px;line-height:1.5;">${era.toUpperCase()}</span>
           <span style="color:var(--text-dim);">${pop}</span></div>
-        <div style="font-size:9px;color:var(--text-dim);margin:-1px 0 1px 15px;">${t.race.name} · ${era}${pop === 0 ? ' · ✝' : ''}</div></div>`;
+        <div style="font-size:9px;color:var(--text-dim);margin:-1px 0 1px 15px;">${t.race.name}${pop === 0 ? ' · ✝' : ''}</div></div>`;
     }).join('');
   }
 
@@ -288,6 +358,7 @@ export class HUD {
     this.tool = id;
     this.toolBtns.forEach(b => {
       const on = b.dataset.tool === id;
+      b.classList.toggle('on', on);
       b.style.borderColor = on ? 'var(--gold)' : 'transparent';
       b.style.background = on ? 'rgba(232,200,122,0.12)' : 'none';
     });
@@ -331,6 +402,7 @@ export class HUD {
     this._renderTribes();
     this.speedBtns.forEach((b, i) => {
       const on = i === s.speedIndex;
+      b.classList.toggle('on', on);
       b.style.background = on ? 'rgba(232,200,122,0.18)' : 'none';
       b.style.color = on ? 'var(--gold)' : 'var(--text)';
     });
@@ -501,7 +573,7 @@ export class HUD {
       this.posBanner.style.display = 'flex';
       this.posBanner.innerHTML = `<span style="color:var(--gold);font-size:12px;">👁 Walking with <b>${b.name}</b></span>
         <span style="color:var(--text-dim);font-size:11px;">WASD to suggest a path · </span>
-        <button id="unposs" style="background:none;border:1px solid var(--panel-edge);color:var(--text);border-radius:4px;padding:4px 10px;cursor:pointer;font-family:inherit;font-size:11px;">Let go</button>`;
+        <button id="unposs" class="hbtn" style="background:none;border:1px solid var(--panel-edge);color:var(--text);border-radius:4px;padding:4px 10px;cursor:pointer;font-family:inherit;font-size:11px;">Let go</button>`;
       this.posBanner.querySelector('#unposs').addEventListener('click', () => this.onUnpossess());
     } else this.posBanner.style.display = 'none';
   }

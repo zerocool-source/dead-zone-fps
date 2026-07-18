@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { WORLD } from './config.js';
 import { BIOME } from './world.js';
+import { RNG } from './rng.js';
 
 const BIOME_COLOR = {
   [BIOME.OCEAN]: [0.05, 0.18, 0.32],
@@ -20,6 +21,12 @@ const BIOME_COLOR = {
   [BIOME.ROCK]: [0.42, 0.40, 0.38],
 };
 
+// how thickly each biome grows blade-grass (unlisted biomes grow none)
+const GRASS_DENSITY = {
+  [BIOME.GRASS]: 1.0, [BIOME.SAVANNA]: 0.6, [BIOME.FOREST]: 0.5,
+  [BIOME.JUNGLE]: 0.65, [BIOME.TAIGA]: 0.25,
+};
+
 export class Renderer {
   constructor(sim, assets = null) {
     this.sim = sim;
@@ -28,6 +35,9 @@ export class Renderer {
     this.selected = null;
     this.possessed = null;
     this.tmp = new THREE.Vector3();
+    // scratch objects reused every frame by the sky / shadow update
+    this._sunDir = new THREE.Vector3();
+    this._c1 = new THREE.Color(); this._c2 = new THREE.Color(); this._c3 = new THREE.Color();
   }
   _has(key) { return this.assets && this.assets.has(key); }
 
@@ -64,14 +74,21 @@ export class Renderer {
     this.scene.add(this.hemi);
     this.sun = new THREE.DirectionalLight(0xffe6b8, 1.5);
     this.sun.castShadow = !this.lowfx;
-    this.sun.shadow.mapSize.set(1024, 1024);
+    // tight ortho shadow frustum that follows the camera target (see _updateSky);
+    // the hemisphere light stays shadowless
+    this.sun.shadow.mapSize.set(2048, 2048);
     const sc = this.sun.shadow.camera;
-    sc.near = 1; sc.far = WORLD.SIZE * 2;
-    sc.left = sc.bottom = -WORLD.SIZE * 0.6; sc.right = sc.top = WORLD.SIZE * 0.6;
+    sc.near = 1; sc.far = 1000;
+    sc.left = sc.bottom = -75; sc.right = sc.top = 75;
+    sc.updateProjectionMatrix();
+    this.sun.shadow.bias = -0.0003;
+    this.sun.shadow.normalBias = 0.5;
     this.scene.add(this.sun);
     this.scene.add(this.sun.target);
 
     this._buildTerrain();
+    this._buildSky();
+    this._buildGrass();
     this._buildWater();
     this._buildTrees();
     this._buildBushes();
@@ -485,7 +502,15 @@ export class Renderer {
       const d = fauna[i];
       let g = this.beastMeshes[i];
       if (!g) { g = this._makeBeast(d.type); this.beastMeshes[i] = g; }
-      if (d.alive) { g.position.set(d.x, d.y, d.z); g.rotation.y = -Math.atan2(d.tz - d.z, d.tx - d.x); }
+      if (d.alive) {
+        g.position.set(d.x, d.y, d.z);
+        // turn toward the travel direction at a finite rate instead of snapping
+        const ty = -Math.atan2(d.tz - d.z, d.tx - d.x);
+        let dr = ty - g.rotation.y;
+        while (dr > Math.PI) dr -= Math.PI * 2;
+        while (dr < -Math.PI) dr += Math.PI * 2;
+        g.rotation.y += dr * Math.min(1, (this._dt || 0.016) * 10);
+      }
       g.visible = d.alive && this.camera.position.distanceTo(g.position) < 320;
     }
   }
@@ -566,17 +591,250 @@ export class Renderer {
     const geo = this._terrainGeometry();
     this.terrain.geometry.dispose();
     this.terrain.geometry = geo;
+    // terraforming moved the ground — regrow every grass cell against the new heights
+    if (this._grassCells) {
+      for (const slot of this._grassCells.values()) this._grassFree.push(slot);
+      this._grassCells.clear();
+      this._grassCX = null;   // forces the want-set rebuild next frame
+    }
   }
 
   _buildWater() {
-    const geo = new THREE.PlaneGeometry(WORLD.SIZE * 1.6, WORLD.SIZE * 1.6);
+    const S = WORLD.SIZE * 1.6;
+    // segments only when we animate; lowfx keeps the old single-quad static sheet
+    const segs = this.lowfx ? 1 : 96;
+    const geo = new THREE.PlaneGeometry(S, S, segs, segs);
     geo.rotateX(-Math.PI / 2);
     const mat = new THREE.MeshStandardMaterial({
       color: 0x1b4a6b, transparent: true, opacity: 0.82, roughness: 0.25, metalness: 0.3,
     });
+    if (!this.lowfx) {
+      // gentle vertex ripple + a fresnel-ish pale band where the water meets the horizon
+      this._waterU = { uTime: { value: 0 } };
+      mat.onBeforeCompile = (shader) => {
+        shader.uniforms.uTime = this._waterU.uTime;
+        shader.vertexShader = shader.vertexShader
+          .replace('#include <common>', '#include <common>\nuniform float uTime;\nvarying vec3 vWaterPos;')
+          .replace('#include <begin_vertex>', [
+            '#include <begin_vertex>',
+            'transformed.y += sin(position.x * 0.045 + uTime * 1.1) * 0.10',
+            '  + sin(position.z * 0.062 - uTime * 0.8) * 0.08',
+            '  + sin((position.x + position.z) * 0.021 + uTime * 0.55) * 0.06;',
+            'vWaterPos = transformed;',
+          ].join('\n'));
+        shader.fragmentShader = shader.fragmentShader
+          .replace('#include <common>', '#include <common>\nuniform float uTime;\nvarying vec3 vWaterPos;')
+          .replace('#include <color_fragment>', [
+            '#include <color_fragment>',
+            '{',
+            '  vec3 vdir = normalize(cameraPosition - vWaterPos);',
+            '  float fres = pow(1.0 - clamp(vdir.y, 0.0, 1.0), 3.0);',
+            '  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.52, 0.70, 0.78), fres * 0.55);',
+            '  float shimmer = sin(vWaterPos.x * 0.55 + uTime * 1.6) * sin(vWaterPos.z * 0.47 - uTime * 1.2);',
+            '  diffuseColor.rgb += vec3(0.028) * shimmer * (0.35 + fres);',
+            '}',
+          ].join('\n'));
+      };
+    }
     this.water = new THREE.Mesh(geo, mat);
     this.water.position.y = WORLD.SEA_LEVEL + 0.15;
     this.scene.add(this.water);
+  }
+
+  // ---- gradient sky dome: zenith→horizon blend with a warm glow around the sun ----
+  _buildSky() {
+    if (this.lowfx) return; // the flat background colour is enough in cheap mode
+    this.skyU = {
+      uTop: { value: new THREE.Color(0x0a0d14) },
+      uHorizon: { value: new THREE.Color(0x0a0d14) },
+      uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+      uWarm: { value: new THREE.Color(0xff8a45) },
+      uWarmAmt: { value: 0 },
+    };
+    const mat = new THREE.ShaderMaterial({
+      uniforms: this.skyU,
+      side: THREE.BackSide, depthWrite: false, fog: false,
+      vertexShader: 'varying vec3 vDir; void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: [
+        'varying vec3 vDir;',
+        'uniform vec3 uTop, uHorizon, uWarm, uSunDir;',
+        'uniform float uWarmAmt;',
+        'void main(){',
+        '  vec3 d = normalize(vDir);',
+        '  vec3 col = mix(uHorizon, uTop, pow(clamp(d.y, 0.0, 1.0), 0.58));',
+        '  col += uWarm * (pow(max(dot(d, uSunDir), 0.0), 5.0) * uWarmAmt);', // dawn/dusk glow
+        '  gl_FragColor = vec4(col, 1.0);',
+        '}',
+      ].join('\n'),
+    });
+    this.skyDome = new THREE.Mesh(new THREE.SphereGeometry(2400, 24, 14), mat);
+    this.skyDome.frustumCulled = false;
+    this.skyDome.renderOrder = -1;
+    this.scene.add(this.skyDome);
+  }
+
+  // ---- grass: one InstancedMesh of wind-blown blades around the camera target ----
+  // Blades live in 16-unit cells keyed by integer coords; each cell fills from a
+  // per-cell seeded RNG so the same cell always regrows the exact same tuft. As the
+  // camera target moves, cells that fall out of range hand their slots to new cells,
+  // and a shader fade scales blades to nothing near the outer radius (no hard edge).
+  _buildGrass() {
+    const CELL = 16, RADIUS = 120;
+    const ring = [];                       // cell offsets that fall inside the radius
+    const reach = RADIUS / CELL + 0.71;    // allow the cell diagonal
+    for (let dz = -9; dz <= 9; dz++) for (let dx = -9; dx <= 9; dx++) {
+      if (Math.hypot(dx + 0.5, dz + 0.5) <= reach) ring.push([dx, dz]);
+    }
+    // ~40k blades normally, ~6k under lowfx
+    this._grassCfg = { CELL, ring, perCell: this.lowfx ? 28 : 190 };
+    const slots = ring.length + 8;
+    const count = slots * this._grassCfg.perCell;
+    this._grassU = {
+      uTime: { value: 0 },
+      uWind: { value: 1 },
+      uGrassEye: { value: new THREE.Vector3() },
+    };
+    const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = this._grassU.uTime;
+      shader.uniforms.uWind = this._grassU.uWind;
+      shader.uniforms.uGrassEye = this._grassU.uGrassEye;
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nuniform float uTime, uWind;\nuniform vec3 uGrassEye;')
+        .replace('#include <begin_vertex>', [
+          '#include <begin_vertex>',
+          '#ifdef USE_INSTANCING',
+          '  vec3 gPos = vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]);',
+          // shrink to nothing toward the outer radius so the field has no hard edge
+          '  transformed *= 1.0 - smoothstep(90.0, 120.0, distance(gPos.xz, uGrassEye.xz));',
+          // wind: a couple of drifting sine fields bend the blade tops
+          '  float gw = position.y * position.y * uWind;',
+          '  transformed.x += (sin(uTime * 1.7 + gPos.x * 0.35 + gPos.z * 0.25) + 0.45 * sin(uTime * 3.9 + gPos.x * 1.1)) * 0.16 * gw;',
+          '  transformed.z += cos(uTime * 1.4 + gPos.z * 0.31 + gPos.x * 0.21) * 0.11 * gw;',
+          '#endif',
+        ].join('\n'));
+    };
+    const grass = new THREE.InstancedMesh(this._grassGeometry(), mat, count);
+    grass.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3);
+    grass.castShadow = false; grass.receiveShadow = false;
+    grass.frustumCulled = false;   // blades surround the target; the shader fade culls
+    this.scene.add(grass);
+    this.grass = grass;
+    this._grassCells = new Map();  // 'cx,cz' -> slot
+    this._grassFree = [];
+    for (let i = slots - 1; i >= 0; i--) this._grassFree.push(i);
+    this._grassQueue = [];
+    this._grassCX = null; this._grassCZ = null;
+    // scratch objects for cell fills
+    this._gm = new THREE.Matrix4(); this._gq = new THREE.Quaternion();
+    this._ge = new THREE.Euler(); this._gp = new THREE.Vector3(); this._gs = new THREE.Vector3();
+    this._gc = new THREE.Color(); this._gc2 = new THREE.Color();
+  }
+
+  // one blade: two crossed, tapered strips of unit height (the instance scale sets the
+  // real 0.5–0.9 height), vertex-coloured dark→light from root to tip
+  _grassGeometry() {
+    const pos = [], col = [], norm = [], idx = [];
+    // [halfWidth, y, forward lean, r, g, b] at three levels up the blade
+    const LVL = [
+      [0.085, 0.0, 0.00, 0.36, 0.40, 0.34],
+      [0.055, 0.55, 0.05, 0.68, 0.72, 0.60],
+      [0.010, 1.0, 0.14, 1.00, 1.00, 0.82],
+    ];
+    for (const rot of [0, Math.PI / 2]) {
+      const c = Math.cos(rot), s = Math.sin(rot);
+      const o = pos.length / 3;
+      for (const [hw, y, lean, r, g, b] of LVL) {
+        for (const sgn of [-1, 1]) {
+          pos.push(sgn * hw * c + lean * s, y, -sgn * hw * s + lean * c);
+          norm.push(0, 1, 0);        // up-facing normals: blades take the ground's light
+          col.push(r, g, b);
+        }
+      }
+      idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2, o + 2, o + 3, o + 4, o + 3, o + 5, o + 4);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(norm, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    geo.setIndex(idx);
+    return geo;
+  }
+
+  _grassFillCell(slot, cx, cz) {
+    const { CELL, perCell } = this._grassCfg;
+    const world = this.sim.world;
+    // deterministic per-cell seed — a cell never pops differently on revisit
+    const rng = new RNG((Math.imul(cx, 0x9E3779B1) ^ Math.imul(cz, 0x85EBCA77)) >>> 0);
+    const m = this._gm, q = this._gq, e = this._ge, p = this._gp, s = this._gs, c = this._gc;
+    const base = slot * perCell;
+    for (let i = 0; i < perCell; i++) {
+      const x = (cx + rng.next()) * CELL;
+      const z = (cz + rng.next()) * CELL;
+      const keep = rng.next();
+      const h = world.heightAt(x, z);
+      const biome = world.biomeAt(x, z);
+      let ok = h > WORLD.SEA_LEVEL + 0.5 && keep < (GRASS_DENSITY[biome] || 0);
+      if (ok) { // flat-ish ground only — no grass on cliff faces
+        ok = Math.abs(world.heightAt(x + 1.2, z) - h) + Math.abs(world.heightAt(x, z + 1.2) - h) < 1.1;
+      }
+      const hgt = rng.range(0.5, 0.9), wid = rng.range(0.8, 1.25);
+      e.set(rng.range(-0.13, 0.13), rng.next() * Math.PI * 2, rng.range(-0.13, 0.13));
+      if (ok) m.compose(p.set(x, h - 0.02, z), q.setFromEuler(e), s.set(wid, hgt, wid));
+      else m.makeScale(0, 0, 0);   // rejected blades collapse to nothing
+      this.grass.setMatrixAt(base + i, m);
+      // tint: green pulled toward the underlying biome colour, plus a little variance
+      const bc = BIOME_COLOR[biome] || BIOME_COLOR[BIOME.GRASS];
+      c.setRGB(0.36, 0.55, 0.25).lerp(this._gc2.setRGB(bc[0], bc[1], bc[2]), 0.4);
+      c.offsetHSL(rng.range(-0.03, 0.03), rng.range(-0.05, 0.08), rng.range(-0.05, 0.05));
+      this.grass.setColorAt(base + i, c);
+    }
+  }
+
+  _updateGrass(dt) {
+    if (!this.grass) return;
+    const u = this._grassU, t = this.controls.target;
+    u.uTime.value += dt;
+    // wind picks up while a rain front passes
+    const gale = this.sim.weather && this.sim.weather.state === 'rain' ? 2.1 : 1;
+    u.uWind.value += (gale - u.uWind.value) * Math.min(1, dt * 0.6);
+    u.uGrassEye.value.set(t.x, 0, t.z);
+    // continental zoom: individual blades are subpixel — skip the draw entirely
+    this.grass.visible = this.camera.position.distanceTo(t) < 500;
+    if (!this.grass.visible) return;
+    const { CELL, ring } = this._grassCfg;
+    const ccx = Math.floor(t.x / CELL), ccz = Math.floor(t.z / CELL);
+    if (ccx !== this._grassCX || ccz !== this._grassCZ) {
+      this._grassCX = ccx; this._grassCZ = ccz;
+      const want = new Set();
+      for (const [dx, dz] of ring) want.add((ccx + dx) + ',' + (ccz + dz));
+      for (const [key, slot] of this._grassCells) {
+        if (!want.has(key)) { this._grassFree.push(slot); this._grassCells.delete(key); }
+      }
+      this._grassQueue.length = 0;
+      for (const key of want) if (!this._grassCells.has(key)) this._grassQueue.push(key);
+      // nearest cells fill first (queue pops from the end)
+      const d2 = (k) => {
+        const cm = k.indexOf(',');
+        const gx = +k.slice(0, cm) - ccx, gz = +k.slice(cm + 1) - ccz;
+        return gx * gx + gz * gz;
+      };
+      this._grassQueue.sort((a, b) => d2(b) - d2(a));
+    }
+    // fill a few cells per frame; far blades are shader-faded so latecomers never pop
+    let budget = 24, filled = false;
+    while (budget-- > 0 && this._grassQueue.length && this._grassFree.length) {
+      const key = this._grassQueue.pop();
+      const slot = this._grassFree.pop();
+      this._grassCells.set(key, slot);
+      const cm = key.indexOf(',');
+      this._grassFillCell(slot, +key.slice(0, cm), +key.slice(cm + 1));
+      filled = true;
+    }
+    if (filled) {
+      this.grass.instanceMatrix.needsUpdate = true;
+      this.grass.instanceColor.needsUpdate = true;
+    }
   }
 
   _buildTrees() {
@@ -763,10 +1021,15 @@ export class Renderer {
       // locomotion: real rig walk if animated (LOD: only step the skeleton when near)
       if (g.userData.mixer) {
         if (dist < 200) {
-          g.userData.mixer.update(this._dt || 0.016);
-          // stride speed follows measured ground speed; faint sway at rest
-          g.userData.walk.setEffectiveWeight(b.moving ? 1 : 0.12);
-          g.userData.walk.timeScale = b.moving ? Math.max(0.7, Math.min(2.3, vel / 2.4)) : 0.35;
+          g.userData.mixer.update(dtf);
+          // blend the walk in and out (fast fade to zero so nobody moonwalks in place)
+          const targetW = b.moving ? 1 : 0;
+          const w = g.userData.walkW || 0;
+          const nw = w + (targetW - w) * Math.min(1, dtf * (b.moving ? 8 : 14));
+          g.userData.walkW = nw;
+          g.userData.walk.setEffectiveWeight(nw);
+          // stride speed follows measured ground speed (no foot-sliding)
+          if (b.moving) g.userData.walk.timeScale = Math.max(0.6, Math.min(1.6, vel / 3));
         }
         g.userData.body.position.y = g.userData.bodyBaseY;
       } else {
@@ -776,6 +1039,10 @@ export class Renderer {
       const working = !b.moving && (b.action === 'chopping wood' || b.action === 'mining stone' || b.action === 'building' || b.action === 'farming');
       g.userData.body.rotation.x = working && dist < 160
         ? Math.max(0, Math.sin(performance.now() * 0.008 + b.id)) * 0.42
+        : 0;
+      // a whisper of idle sway so standing beings don't look frozen
+      g.userData.body.rotation.z = !b.moving && !working && dist < 160
+        ? Math.sin(performance.now() * 0.0013 + b.id * 1.7) * 0.03
         : 0;
       // visible carried goods (log / stone / food) while hauling
       this._syncCarry(g, b);
@@ -860,24 +1127,51 @@ export class Renderer {
     const f = this.sim.day % 1;                     // 0..1 within a day
     const ang = f * Math.PI * 2 - Math.PI / 2;       // sunrise at f=0.25
     const elev = Math.sin(f * Math.PI);              // 0 at night edges, 1 at noon
-    const R = WORLD.SIZE * 0.9;
-    this.sun.position.set(Math.cos(ang) * R, Math.max(8, elev * R), Math.sin(ang * 0.6) * R * 0.4 + 40);
-    this.sun.target.position.set(this.sim.home.x, 0, this.sim.home.z);
+    const raining = this.sim.weather && this.sim.weather.state === 'rain';
+    // sun direction along its arc (held just above the horizon so shadows stay sane)
+    const dir = this._sunDir.set(Math.cos(ang), Math.max(0.12, elev), Math.sin(ang * 0.6) * 0.35 + 0.18).normalize();
+    // the tight shadow frustum follows the camera target; snapping the follow point to
+    // whole shadow texels stops the shadow edges shimmering as the camera pans
+    const t = this.controls.target;
+    const sc = this.sun.shadow.camera;
+    const texel = (sc.right - sc.left) / this.sun.shadow.mapSize.x;
+    const fx = Math.round(t.x / texel) * texel;
+    const fz = Math.round(t.z / texel) * texel;
+    this.sun.position.set(fx + dir.x * 400, dir.y * 400, fz + dir.z * 400);
+    this.sun.target.position.set(fx, 0, fz);
     this.sun.intensity = 0.3 + elev * 1.6;
-    const warm = new THREE.Color(0xffd9a0), cool = new THREE.Color(0x6a86c0);
+    const warm = this._c1.setHex(0xffd9a0), cool = this._c2.setHex(0x6a86c0);
     this.sun.color.copy(cool).lerp(warm, Math.min(1, elev + 0.2));
+    // dawn/dusk pulls the low sun toward ember orange
+    const duskAmt = Math.max(0, 1 - Math.abs(elev - 0.16) / 0.3);
+    this.sun.color.lerp(this._c1.setHex(0xff7a38), duskAmt * 0.55);
     this.hemi.intensity = 0.25 + elev * 0.7;
     this._elev = elev;
-    const night = new THREE.Color(0x0a0d14), dusk = new THREE.Color(0x1a2336), day = new THREE.Color(0x9fc0e8);
-    const skyc = elev < 0.25 ? night.clone().lerp(dusk, elev / 0.25) : dusk.clone().lerp(day, (elev - 0.25) / 0.75);
+    // zenith + horizon palette — the dome blends between them, fog matches the horizon
+    const zen = this._c1, hor = this._c3, tmp = this._c2;
+    if (elev < 0.25) zen.setHex(0x05070d).lerp(tmp.setHex(0x1b2540), elev / 0.25);
+    else zen.setHex(0x1b2540).lerp(tmp.setHex(0x3f74c9), (elev - 0.25) / 0.75);
+    if (elev < 0.25) hor.setHex(0x0d1019).lerp(tmp.setHex(0x4a4358), elev / 0.25);
+    else hor.setHex(0x4a4358).lerp(tmp.setHex(0xbcd6e8), (elev - 0.25) / 0.75);
+    hor.lerp(tmp.setHex(0xff9558), duskAmt * 0.4);   // warm band at dawn/dusk
+    let warmAmt = duskAmt * 0.9;
     // rain fronts grey the sky and mute the light
-    if (this.sim.weather && this.sim.weather.state === 'rain') {
-      skyc.lerp(new THREE.Color(0x5a6470), 0.55);
+    if (raining) {
+      zen.lerp(tmp.setHex(0x4a525c), 0.55);
+      hor.lerp(tmp.setHex(0x5a6470), 0.55);
       this.sun.intensity *= 0.45;
       this.hemi.intensity *= 0.75;
+      warmAmt *= 0.15;
     }
-    this.scene.background.copy(skyc);
-    this.scene.fog.color.copy(skyc);
+    if (this.skyDome) {
+      this.skyU.uTop.value.copy(zen);
+      this.skyU.uHorizon.value.copy(hor);
+      this.skyU.uSunDir.value.copy(dir);
+      this.skyU.uWarmAmt.value = warmAmt;
+      this.skyDome.position.copy(this.camera.position);  // horizon can never be outrun
+    }
+    this.scene.background.copy(hor).lerp(zen, 0.45);     // seen where the dome isn't (lowfx)
+    this.scene.fog.color.copy(hor);
   }
 
   update(dt) {
@@ -923,6 +1217,8 @@ export class Renderer {
     this._updateSpeech(dt);
     this._updateEffects(dt);
     this._updateRain(dt);
+    this._updateGrass(dt);
+    if (this._waterU) this._waterU.uTime.value += dt;
     this._updateSky();
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
