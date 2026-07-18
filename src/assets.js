@@ -38,17 +38,27 @@ const MANIFEST = {
 export class AssetStore {
   constructor() { this.assets = {}; }
 
-  async load() {
+  // Loads all GLBs with a hard per-file timeout so one stalled download (slow
+  // proxy, flaky network) can never wedge the loading screen — the game starts
+  // with primitive fallbacks for anything that didn't arrive in time.
+  async load(onProgress = null) {
     const loader = new GLTFLoader();
     const base = (import.meta.env && import.meta.env.BASE_URL) || '/';
-    await Promise.all(Object.entries(MANIFEST).map(([key, info]) => new Promise((resolve) => {
-      loader.load(
-        base + 'models/' + info.file,
-        (gltf) => { try { this.assets[key] = this._process(gltf, info); } catch (e) { console.warn('[assets] process failed:', key, e); } resolve(); },
-        undefined,
-        () => resolve(), // missing/failed → fallback, stay silent
-      );
-    })));
+    const entries = Object.entries(MANIFEST);
+    let done = 0;
+    const tick = () => { done++; if (onProgress) onProgress(done, entries.length); };
+    await Promise.all(entries.map(([key, info]) => {
+      const fetchOne = new Promise((resolve) => {
+        loader.load(
+          base + 'models/' + info.file,
+          (gltf) => { try { this.assets[key] = this._process(gltf, info); } catch (e) { console.warn('[assets] process failed:', key, e); } resolve(); },
+          undefined,
+          () => resolve(), // missing/failed → fallback, stay silent
+        );
+      });
+      const timeout = new Promise((resolve) => setTimeout(resolve, 25000));
+      return Promise.race([fetchOne, timeout]).then(tick);
+    }));
     return this;
   }
 

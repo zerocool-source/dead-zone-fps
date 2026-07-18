@@ -32,7 +32,9 @@ window.AEON.setLLM = (fn) => sim.voices.setLLM(fn);
 async function boot() {
   const status = document.getElementById('veil-status');
   status.textContent = 'CARVING THE MESHES…';
-  const assets = await new AssetStore().load();   // GLBs (or graceful fallback)
+  const assets = await new AssetStore().load((done, total) => {
+    status.textContent = `CARVING THE MESHES… ${done}/${total}`;
+  }); // GLBs (or graceful fallback — a stalled download can't wedge the load)
 
   renderer = new Renderer(sim, assets);
   window.AEON.renderer = renderer;
