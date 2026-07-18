@@ -3,7 +3,7 @@
 // can swoop to street level. No game logic here; it only reads sim state.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { WORLD } from './config.js';
+import { WORLD, BUILDINGS } from './config.js';
 import { BIOME } from './world.js';
 import { RNG } from './rng.js';
 
@@ -313,12 +313,9 @@ export class Renderer {
       const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color: c, roughness: 1 }));
       m.position.y = y + h / 2; m.castShadow = true; g.add(m); return m;
     };
-    if (type === 'hut' && this._has('hut')) { g.add(this.assets.clone('hut')); return g; }
-    if (type === 'totem' && this._has('totem')) { g.add(this.assets.clone('totem')); return g; }
-    if (type === 'granary' && this._has('granary')) { g.add(this.assets.clone('granary')); return g; }
-    if (type === 'watchtower' && this._has('watchtower')) { g.add(this.assets.clone('watchtower')); return g; }
-    if (type === 'well' && this._has('well')) { g.add(this.assets.clone('well')); return g; }
-    if (type === 'ship' && this._has('ship')) { g.add(this.assets.clone('ship')); return g; }
+    // any building whose config names a loaded GLB uses it; primitives below are the fallback
+    const meshKey = BUILDINGS[type] && BUILDINGS[type].mesh;
+    if (meshKey && this._has(meshKey)) { g.add(this.assets.clone(meshKey)); return g; }
     switch (type) {
       case 'storehouse': { box(4, 2, 3, WOOD, 0); const r = box(4.4, 0.4, 3.4, DARK, 2); break; }
       case 'granary': { box(2, 0.6, 2, WOOD, 0); const b = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 1.8, 10), new THREE.MeshStandardMaterial({ color: STRAW, roughness: 1 })); b.position.y = 1.5; b.castShadow = true; g.add(b); const r = new THREE.Mesh(new THREE.ConeGeometry(1.4, 1, 10), new THREE.MeshStandardMaterial({ color: DARK })); r.position.y = 2.9; g.add(r); break; }
@@ -461,57 +458,96 @@ export class Renderer {
     tribe._farms = grp;
   }
 
-  // ---- fauna (deer / boar / wolf) ----
+  // ---- fauna (deer / boar / wolf / mammoth) ----
+  // Each beast is a yaw group (g) holding an inner gait group: yaw lives on g, while
+  // procedural bob/pitch/roll live on the inner so they act in the beast's own frame
+  // (the GLBs are single static meshes — no rigs — so the gait is fully procedural).
   _makeBeast(type) {
+    const g = new THREE.Group();
+    const inner = new THREE.Group();
+    g.add(inner);
+    let bodyH;
     // generated low-poly GLB if available (already normalized: base at y=0, scaled)
     if (this._has(type)) {
-      const g = new THREE.Group();
       const m = this.assets.clone(type);
       m.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-      g.add(m);
-      this.scene.add(g);
-      return g;
+      inner.add(m);
+      bodyH = this.assets.assets[type].height || 1.2;
+    } else {
+      const SPEC = {
+        deer: { c: 0x9a7048, s: 1.0, len: 0.7, r: 0.30, legH: 1.0, antler: true },
+        boar: { c: 0x4a3a2e, s: 1.05, len: 0.8, r: 0.44, legH: 0.6, antler: false },
+        wolf: { c: 0x74777f, s: 0.92, len: 0.85, r: 0.24, legH: 0.62, antler: false },
+      }[type] || { c: 0x8a6a44, s: 1, len: 0.7, r: 0.3, legH: 1.0 };
+      const mat = new THREE.MeshStandardMaterial({ color: SPEC.c, roughness: 0.95 });
+      const body = new THREE.Mesh(new THREE.CapsuleGeometry(SPEC.r, SPEC.len, 4, 8), mat);
+      body.rotation.z = Math.PI / 2; body.position.y = SPEC.legH + SPEC.r; body.castShadow = true; inner.add(body);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(SPEC.r * 0.62, 8, 8), mat);
+      head.position.set(SPEC.len * 0.7 + SPEC.r, SPEC.legH + SPEC.r + (type === 'deer' ? 0.45 : 0.05), 0); inner.add(head);
+      if (SPEC.antler) {
+        const am = new THREE.MeshStandardMaterial({ color: 0xb8a070, roughness: 1 });
+        for (const s of [-1, 1]) { const a = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.4, 4), am); a.position.set(SPEC.len * 0.7 + SPEC.r, SPEC.legH + SPEC.r + 0.8, s * 0.1); inner.add(a); }
+      }
+      for (const dx of [-0.28, 0.28]) for (const dz of [-0.16, 0.16]) {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, SPEC.legH, 4), mat);
+        leg.position.set(dx, SPEC.legH / 2, dz); inner.add(leg);
+      }
+      g.scale.setScalar(SPEC.s);
+      bodyH = SPEC.legH + SPEC.r * 2;   // inner-local units; g.scale brings them to world
     }
-    const SPEC = {
-      deer: { c: 0x9a7048, s: 1.0, len: 0.7, r: 0.30, legH: 1.0, antler: true },
-      boar: { c: 0x4a3a2e, s: 1.05, len: 0.8, r: 0.44, legH: 0.6, antler: false },
-      wolf: { c: 0x74777f, s: 0.92, len: 0.85, r: 0.24, legH: 0.62, antler: false },
-    }[type] || { c: 0x8a6a44, s: 1, len: 0.7, r: 0.3, legH: 1.0 };
-    const g = new THREE.Group();
-    const mat = new THREE.MeshStandardMaterial({ color: SPEC.c, roughness: 0.95 });
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(SPEC.r, SPEC.len, 4, 8), mat);
-    body.rotation.z = Math.PI / 2; body.position.y = SPEC.legH + SPEC.r; body.castShadow = true; g.add(body);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(SPEC.r * 0.62, 8, 8), mat);
-    head.position.set(SPEC.len * 0.7 + SPEC.r, SPEC.legH + SPEC.r + (type === 'deer' ? 0.45 : 0.05), 0); g.add(head);
-    if (SPEC.antler) {
-      const am = new THREE.MeshStandardMaterial({ color: 0xb8a070, roughness: 1 });
-      for (const s of [-1, 1]) { const a = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.4, 4), am); a.position.set(SPEC.len * 0.7 + SPEC.r, SPEC.legH + SPEC.r + 0.8, s * 0.1); g.add(a); }
-    }
-    for (const dx of [-0.28, 0.28]) for (const dz of [-0.16, 0.16]) {
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, SPEC.legH, 4), mat);
-      leg.position.set(dx, SPEC.legH / 2, dz); g.add(leg);
-    }
-    g.scale.setScalar(SPEC.s);
+    // stride: gait phase locked to distance travelled; move: smoothed 0..1 walk blend
+    g.userData = { inner, bodyH, stride: Math.random() * Math.PI * 2, move: 0, seed: Math.random() * Math.PI * 2 };
     this.scene.add(g);
     return g;
   }
   syncFauna() {
     if (!this.beastMeshes) this.beastMeshes = [];
     const fauna = this.sim.fauna;
+    const dtf = this._dt || 0.016;
+    const world = this.sim.world;
+    const now = performance.now() * 0.001;
     for (let i = 0; i < fauna.length; i++) {
       const d = fauna[i];
       let g = this.beastMeshes[i];
       if (!g) { g = this._makeBeast(d.type); this.beastMeshes[i] = g; }
-      if (d.alive) {
-        g.position.set(d.x, d.y, d.z);
-        // turn toward the travel direction at a finite rate instead of snapping
-        const ty = -Math.atan2(d.tz - d.z, d.tx - d.x);
+      const st = g.userData;
+      if (!d.alive) { if (g.visible) g.visible = false; st.lastX = undefined; continue; }
+      // measured ground speed — drives both facing and gait cadence
+      const px = st.lastX !== undefined ? st.lastX : d.x;
+      const pz = st.lastX !== undefined ? st.lastZ : d.z;
+      let vel = Math.hypot(d.x - px, d.z - pz) / dtf;
+      if (vel > 40) vel = 0;   // respawn teleport — don't whip around or gallop in place
+      st.lastX = d.x; st.lastZ = d.z;
+      // grounding: sit exactly on the terrain every frame, slopes included
+      g.position.set(d.x, world.heightAt(d.x, d.z), d.z);
+      const vis = this.camera.position.distanceTo(g.position) < 320;
+      if (g.visible !== vis) g.visible = vis;
+      if (!vis) continue;
+      // smooth facing: yaw-lerp toward the direction actually travelled (no snapping)
+      if (vel > 0.4) {
+        const ty = -Math.atan2(d.z - pz, d.x - px);
         let dr = ty - g.rotation.y;
         while (dr > Math.PI) dr -= Math.PI * 2;
         while (dr < -Math.PI) dr += Math.PI * 2;
-        g.rotation.y += dr * Math.min(1, (this._dt || 0.016) * 10);
+        g.rotation.y += dr * Math.min(1, dtf * 9);
       }
-      g.visible = d.alive && this.camera.position.distanceTo(g.position) < 320;
+      // gait: phase advances with distance travelled (faster animals cycle faster;
+      // stride length scales with body size), blended out smoothly when idle
+      st.move += ((vel > 0.4 ? 1 : 0) - st.move) * Math.min(1, dtf * 6);
+      st.stride += vel * dtf * (Math.PI * 2 / (0.9 * st.bodyH));
+      const inner = st.inner, mv = st.move;
+      let bob = Math.sin(st.stride * 2) * st.bodyH * 0.025 * mv;   // two footfalls per cycle
+      let pitch = Math.sin(st.stride) * 0.06 * mv;                 // ~3.5° nose rock
+      inner.rotation.x = Math.cos(st.stride) * 0.03 * mv;          // tiny roll sway
+      // idle life: occasional slow grazing head-dips so standing animals aren't frozen
+      const idle = 1 - mv;
+      if (idle > 0.05) {
+        const nod = Math.max(0, Math.sin(now * 0.35 + st.seed * 1.7)) * Math.sin(now * 1.1 + st.seed);
+        pitch += nod * -0.07 * idle;
+        bob += -Math.abs(nod) * 0.012 * st.bodyH * idle;
+      }
+      inner.position.y = bob;
+      inner.rotation.z = pitch;
     }
   }
 
@@ -575,16 +611,158 @@ export class Renderer {
       colors[i * 3] = c[0] * shade; colors[i * 3 + 1] = c[1] * shade; colors[i * 3 + 2] = c[2] * shade;
     }
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    // per-vertex texture-splat weights (grass, dirt, rock, sand) — lowfx keeps flat colour
+    if (!this.lowfx) geo.setAttribute('splat', new THREE.BufferAttribute(this._terrainSplat(world, n), 4));
     geo.computeVertexNormals();
     return geo;
+  }
+
+  // splat weights per grid vertex from the same biome/height/slope data the vertex
+  // colours use. A 3x3 blur pass softens biome borders so texture transitions are
+  // gradual; weights are normalized to sum 1. Grid order matches plane vertex order.
+  _terrainSplat(world, n) {
+    // base weights per biome: [grass, dirt, rock, sand]
+    const W = {
+      [BIOME.OCEAN]: [0, 0.10, 0, 0.90],
+      [BIOME.BEACH]: [0, 0.08, 0, 0.92],
+      [BIOME.DESERT]: [0, 0.18, 0.02, 0.80],
+      [BIOME.SAVANNA]: [0.42, 0.55, 0.03, 0],
+      [BIOME.GRASS]: [0.92, 0.08, 0, 0],
+      [BIOME.FOREST]: [0.78, 0.22, 0, 0],
+      [BIOME.JUNGLE]: [0.85, 0.15, 0, 0],
+      [BIOME.TAIGA]: [0.50, 0.42, 0.08, 0],
+      [BIOME.TUNDRA]: [0.12, 0.62, 0.26, 0],
+      [BIOME.SNOW]: [0, 0.08, 0.92, 0],   // rock texture × white vertex colour = snow
+      [BIOME.ROCK]: [0.04, 0.18, 0.78, 0],
+    };
+    const stride = n + 1, count = stride * stride;
+    const raw = new Float32Array(count * 4);
+    const cell = WORLD.SIZE / n;
+    const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+    for (let iy = 0; iy <= n; iy++) {
+      for (let ix = 0; ix <= n; ix++) {
+        const id = iy * stride + ix;
+        const w = W[world.biome[id]] || W[BIOME.GRASS];
+        // slope from central height differences — steep faces read as bare rock
+        const xl = world.h[iy * stride + Math.max(0, ix - 1)], xr = world.h[iy * stride + Math.min(n, ix + 1)];
+        const zl = world.h[Math.max(0, iy - 1) * stride + ix], zr = world.h[Math.min(n, iy + 1) * stride + ix];
+        const slope = Math.hypot(xr - xl, zr - zl) / (2 * cell);
+        const rk = sstep(0.45, 0.95, slope);
+        const o = id * 4;
+        raw[o] = w[0] * (1 - rk);
+        raw[o + 1] = w[1] * (1 - rk) + 0.15 * rk;
+        raw[o + 2] = w[2] + 0.85 * rk;
+        raw[o + 3] = w[3] * (1 - rk);
+      }
+    }
+    const out = new Float32Array(count * 4);
+    for (let iy = 0; iy <= n; iy++) {
+      for (let ix = 0; ix <= n; ix++) {
+        let a = 0, b = 0, c = 0, d = 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const jx = ix + dx, jy = iy + dy;
+          if (jx < 0 || jx > n || jy < 0 || jy > n) continue;
+          const jo = (jy * stride + jx) * 4;
+          a += raw[jo]; b += raw[jo + 1]; c += raw[jo + 2]; d += raw[jo + 3];
+        }
+        const o = (iy * stride + ix) * 4, s = (a + b + c + d) || 1;
+        out[o] = a / s; out[o + 1] = b / s; out[o + 2] = c / s; out[o + 3] = d / s;
+      }
+    }
+    return out;
   }
 
   _buildTerrain() {
     const geo = this._terrainGeometry();
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0.0, flatShading: false });
+    if (!this.lowfx) this._patchTerrainMat(mat);
     this.terrain = new THREE.Mesh(geo, mat);
     this.terrain.receiveShadow = true;
     this.scene.add(this.terrain);
+  }
+
+  // ---- terrain texture splatting: four tiling ground maps blended by the per-vertex
+  // 'splat' weights, then MULTIPLIED into the existing biome vertex colour so tinting,
+  // shadows, and the day/night lighting pipeline stay exactly as they were. Patched
+  // via onBeforeCompile (the material stays a MeshStandardMaterial, so receiveShadow
+  // and all lighting chunks survive). Skipped entirely under lowfx. ----
+  _patchTerrainMat(mat) {
+    const base = (import.meta.env && import.meta.env.BASE_URL) || '/';
+    const loader = new THREE.TextureLoader();
+    const aniso = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
+    this._terrU = {
+      uTexGrass: { value: null }, uTexDirt: { value: null },
+      uTexRock: { value: null }, uTexSand: { value: null },
+      // per-map brightness compensation, auto-tuned from each image's mean luminance
+      // so multiplying by the texture never darkens the ground (1.6 until measured)
+      uTexBoost: { value: new THREE.Vector4(1.6, 1.6, 1.6, 1.6) },
+      uTexAmt: { value: 0 },   // stays 0 (plain vertex colour) until all four maps arrive
+    };
+    let loaded = 0;
+    ['Grass', 'Dirt', 'Rock', 'Sand'].forEach((nm, i) => {
+      loader.load(base + 'textures/tex_' + nm.toLowerCase() + '.jpg', (tex) => {
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = aniso;
+        this._terrU['uTex' + nm].value = tex;
+        this._texBoostFromImage(tex, i);
+        if (++loaded === 4) this._terrU.uTexAmt.value = 1;
+      });
+    });
+    mat.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, this._terrU);
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute vec4 splat;\nvarying vec4 vSplat;\nvarying vec3 vTerrPos;')
+        .replace('#include <begin_vertex>', [
+          '#include <begin_vertex>',
+          'vSplat = splat;',
+          'vTerrPos = (modelMatrix * vec4(transformed, 1.0)).xyz;',
+        ].join('\n'));
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', [
+          '#include <common>',
+          'uniform sampler2D uTexGrass, uTexDirt, uTexRock, uTexSand;',
+          'uniform vec4 uTexBoost;',
+          'uniform float uTexAmt;',
+          'varying vec4 vSplat;',
+          'varying vec3 vTerrPos;',
+        ].join('\n'))
+        .replace('#include <color_fragment>', [
+          '#include <color_fragment>',
+          '{',
+          // world-space UVs: one texture tile per ~14 world units
+          '  vec2 tuv = vTerrPos.xz / 14.0;',
+          // fade textures out at distance so tiling never reads from orbit
+          '  float texAmt = uTexAmt * (1.0 - smoothstep(180.0, 320.0, distance(cameraPosition, vTerrPos)));',
+          '  vec4 sw = vSplat / max(vSplat.x + vSplat.y + vSplat.z + vSplat.w, 1e-3);',
+          '  vec3 tcol = texture2D(uTexGrass, tuv).rgb * (sw.x * uTexBoost.x)',
+          '            + texture2D(uTexDirt, tuv).rgb * (sw.y * uTexBoost.y)',
+          '            + texture2D(uTexRock, tuv).rgb * (sw.z * uTexBoost.z)',
+          '            + texture2D(uTexSand, tuv).rgb * (sw.w * uTexBoost.w);',
+          '  diffuseColor.rgb *= mix(vec3(1.0), tcol, texAmt);',
+          '}',
+        ].join('\n'));
+    };
+  }
+
+  // measure a ground map's mean linear-space luminance on a tiny canvas and set its
+  // brightness-compensation component so (vertexColour × texture) matches the old
+  // flat-colour brightness on average
+  _texBoostFromImage(tex, idx) {
+    try {
+      const c = document.createElement('canvas'); c.width = c.height = 32;
+      const ctx = c.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(tex.image, 0, 0, 32, 32);
+      const px = ctx.getImageData(0, 0, 32, 32).data;
+      let sum = 0;
+      for (let i = 0; i < px.length; i += 4) {
+        sum += 0.2126 * Math.pow(px[i] / 255, 2.2)
+             + 0.7152 * Math.pow(px[i + 1] / 255, 2.2)
+             + 0.0722 * Math.pow(px[i + 2] / 255, 2.2);
+      }
+      const mean = sum / (px.length / 4);
+      this._terrU.uTexBoost.value.setComponent(idx, Math.min(4, Math.max(1, 1.05 / Math.max(0.05, mean))));
+    } catch (e) { /* canvas read blocked — keep the 1.6 default */ }
   }
 
   refreshTerrain() {
